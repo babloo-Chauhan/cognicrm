@@ -16,6 +16,7 @@ import { VoiceAgents } from './pages/VoiceAgents.jsx';
 import { Billing } from './pages/Billing.jsx';
 import { TeamPage } from './pages/Team.jsx';
 import { Pipelines } from './pages/Pipelines.jsx';
+import { Integrations } from './pages/Integrations.jsx';
 import { Loading, ToastHost } from './components/ui.jsx';
 import { ModuleGate } from './components/ModuleGate.jsx';
 import { SalesOverview } from './pages/sales/SalesOverview.jsx';
@@ -77,6 +78,7 @@ function Shell() {
             <Route path="assistant" element={gate('ai', <Assistant />)} />
             <Route path="voice-agents" element={gate('ai', <VoiceAgents />)} />
             <Route path="billing" element={<Billing />} />
+            <Route path="integrations" element={<Integrations />} />
             <Route path="team" element={<TeamPage />} />
             <Route path="settings" element={<Settings />} />
             <Route path="register" element={<Navigate to="/" replace />} />

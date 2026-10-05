@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useTheme } from '@/lib/theme';
 import {
   Bell, Bot, Building2, ChartNoAxesCombined, ChevronDown, ChevronsUpDown, CircleHelp, Contact, CreditCard, FileText, Handshake,
-  Inbox, LayoutDashboard, ListChecks, LogOut, Menu, Mic, Monitor, Moon, Package, Phone, Plus, Receipt, Route, Search, Settings,
+  Inbox, LayoutDashboard, ListChecks, LogOut, Menu, Mic, Monitor, Moon, Package, Phone, Plug, Plus, Receipt, Route, Search, Settings,
   Sparkles, Sun, Target, Ticket, Users, Zap,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
@@ -73,6 +73,8 @@ const NAV = [
     items: [
       { to: '/team', label: 'Team', icon: Users },
       { to: '/billing', label: 'Billing', icon: CreditCard },
+      // Always listed for admins: the page explains how to unlock it when the plan lacks integrations
+      { to: '/integrations', label: 'Integrations', icon: Plug, permission: 'settings:manage' },
       { to: '/settings', label: 'Settings', icon: Settings },
     ],
   },

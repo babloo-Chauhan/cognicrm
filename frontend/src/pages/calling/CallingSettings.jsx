@@ -8,6 +8,30 @@ import { useAsync } from '../../lib/hooks.js';
 const SECRET = /token|secret|pass|key/i;
 
 /** Credential form for one provider; secrets are write-only (never shown again after saving). */
+// Readable names and hints for provider credential fields
+const FIELD_LABELS = {
+  accountSid: 'Account SID', authToken: 'Auth token', apiKeySid: 'API key SID', apiKeySecret: 'API key secret', twimlAppSid: 'TwiML App SID',
+  apiKey: 'API key', apiToken: 'API token', subdomain: 'API subdomain', webhookToken: 'Webhook token', authId: 'Auth ID',
+  accessToken: 'Access token', phoneNumberId: 'Phone number ID', appSecret: 'App secret', verifyToken: 'Verify token',
+  host: 'SMTP host', port: 'Port', user: 'Username', pass: 'Password', from: 'From address',
+};
+const FIELD_HINTS = {
+  'telephony:twilio:apiKeySid': 'Optional — only for the browser softphone',
+  'telephony:twilio:apiKeySecret': 'Optional — only for the browser softphone',
+  'telephony:twilio:twimlAppSid': 'Optional — only for the browser softphone',
+  'telephony:exotel:subdomain': 'api.exotel.com, or api.in.exotel.com for the India cluster',
+  'telephony:exotel:webhookToken': 'Any long random secret you choose',
+};
+const PROVIDER_NOTES = {
+  twilio: 'Twilio Console → Account Info',
+  exotel: 'Exotel Dashboard → Settings → API',
+  plivo: 'Plivo Console → Overview',
+  meta: 'Meta for Developers → WhatsApp → API setup',
+  smtp: 'Your mail provider’s SMTP settings',
+  anthropic: 'console.anthropic.com → API keys',
+  deepgram: 'console.deepgram.com → API keys',
+};
+
 export function IntegrationCard({ kind, provider, fields, existing, onSaved }) {
   const [values, setValues] = useState({});
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
@@ -27,9 +51,12 @@ export function IntegrationCard({ kind, provider, fields, existing, onSaved }) {
     }
   };
   return (
-    <div className="card" style={{ boxShadow: 'none' }}>
+    <div className="card flex flex-col" style={{ boxShadow: 'none' }}>
       <div className="card-header">
-        <strong>{label(provider)}</strong>
+        <div>
+          <strong className="text-[15px]">{label(provider)}</strong>
+          {PROVIDER_NOTES[provider] && <div className="text-xs font-normal text-muted-foreground">{PROVIDER_NOTES[provider]}</div>}
+        </div>
         {!existing && <span className="badge">Not connected</span>}
         {existing && existing.readable === false && <StatusBadge status="failed" text="Re-enter credentials" />}
         {existing && existing.readable !== false && <StatusBadge status={existing.enabled ? 'active' : 'paused'} text={existing.enabled ? 'Connected' : 'Disabled'} />}
@@ -38,9 +65,9 @@ export function IntegrationCard({ kind, provider, fields, existing, onSaved }) {
         <ErrorAlert error={error} />
         {ok && <div className="alert alert-info">Saved. Credentials are encrypted at rest.</div>}
         {existing?.readable === false && <div className="alert alert-warning small">The saved credentials can’t be read any more (the server encryption key changed). Fill in every field and save again.</div>}
-        <div className="form-grid">
+        <div className="flex flex-col gap-3">
           {fields.map((f) => (
-            <Field key={f} label={f}>
+            <Field key={f} label={FIELD_LABELS[f] || label(f)} hint={FIELD_HINTS[`${kind}:${provider}:${f}`]}>
               <input className="input" type={SECRET.test(f) ? 'password' : 'text'} autoComplete="off" placeholder={existing && existing.readable !== false ? '•••••• (unchanged)' : ''} value={values[f] || ''} onChange={(e) => setValues({ ...values, [f]: e.target.value })} />
             </Field>
           ))}
