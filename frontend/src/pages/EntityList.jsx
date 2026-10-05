@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Plus, Search, Upload } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { get, patch, post } from '../lib/api.js';
 import { dateTime, label, money } from '../lib/format.js';
@@ -35,7 +37,8 @@ export function EntityList({ entity }) {
   const cfg = ENTITY_CONFIG[entity];
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const [q, setQ] = useState('');
+  // ?q= comes from the global search / command palette
+  const [q, setQ] = useState(() => params.get('q') || '');
   const [filter, setFilter] = useState({});
   const [creating, setCreating] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -45,6 +48,7 @@ export function EntityList({ entity }) {
 
   // e.g. /contacts?new=1&phone=… from the inbound call popup
   useEffect(() => {
+    if (params.get('q')) setParams({}, { replace: true });
     if (params.get('new')) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- open the create dialog requested by the URL
       setCreating({ phone: params.get('phone') || '' });
@@ -93,24 +97,33 @@ export function EntityList({ entity }) {
     <>
       <div className="page-header">
         <div>
-          <h1>{cfg.title}</h1>
-          {data && <p>{data.total} total</p>}
+          <h1 className="flex items-center gap-3">
+            {cfg.title}
+            {data && <span className="rounded-full bg-primary/10 px-2.5 py-0.5 font-sans text-xs font-semibold text-primary">{data.total}</span>}
+          </h1>
+          <p>Manage your {cfg.title.toLowerCase()} — search, filter, import and export.</p>
         </div>
-        <div className="row">
-          <input className="input" style={{ width: 240 }} placeholder={`Search ${cfg.title.toLowerCase()}…`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
+        <div className="flex flex-wrap items-center gap-2">
+          {!cfg.noImportExport && <ExportButtons entity={entity} query={{ q, ...filter }} />}
+          {!cfg.noImportExport && <Button variant="outline" onClick={() => setImporting(true)}><Upload />Import</Button>}
+          <Button onClick={() => setCreating(entity === 'products' ? { active: true, taxRate: 18, unit: 'nos' } : {})} className="shadow-[0_8px_20px_-8px_var(--primary)]"><Plus />New {cfg.singular}</Button>
+        </div>
+      </div>
+      <ErrorAlert error={loadError} />
+      <div className="card overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-3">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input className="input pl-9" placeholder={`Search ${cfg.title.toLowerCase()}…`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
+          </div>
           {(cfg.filters || []).map((f) => (
-            <select key={f.key} className="input" style={{ width: 160 }} value={filter[f.key] || ''} onChange={(e) => setFilter({ ...filter, [f.key]: e.target.value })} aria-label={`Filter by ${f.key}`}>
+            <select key={f.key} className="input w-auto min-w-[150px]" value={filter[f.key] || ''} onChange={(e) => setFilter({ ...filter, [f.key]: e.target.value })} aria-label={`Filter by ${f.key}`}>
               <option value="">All {label(f.key)}</option>
               {f.options.map((o) => <option key={o} value={o}>{label(o)}</option>)}
             </select>
           ))}
-          {!cfg.noImportExport && <ExportButtons entity={entity} query={{ q, ...filter }} />}
-          {!cfg.noImportExport && <button type="button" className="btn" onClick={() => setImporting(true)}>Import</button>}
-          <button type="button" className="btn btn-primary" onClick={() => setCreating(entity === 'products' ? { active: true, taxRate: 18, unit: 'nos' } : {})}>+ New {cfg.singular}</button>
+          {loading && data && <span className="ml-auto text-xs text-muted-foreground">Updating…</span>}
         </div>
-      </div>
-      <ErrorAlert error={loadError} />
-      <div className="card">
         {loading && !data ? <Loading /> : (
           <DataTable
             columns={columns}

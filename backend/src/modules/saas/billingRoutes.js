@@ -63,8 +63,11 @@ router.get('/plans', async (_req, res) => {
 });
 
 async function billingOverview(orgId) {
-  const ctx = await getTenantContext(orgId, { fresh: true });
-  const sub = await CompanySubscription.findOne({ organizationId: orgId }).lean();
+  const [ctx, sub, usage] = await Promise.all([
+    getTenantContext(orgId, { fresh: true }),
+    CompanySubscription.findOne({ organizationId: orgId }).lean(),
+    usageSummary(orgId),
+  ]);
   const plan = sub ? await SubscriptionPlan.findById(sub.planId).lean() : null;
   return {
     subscription: ctx.subscription,
@@ -73,7 +76,7 @@ async function billingOverview(orgId) {
     premium: ctx.premium,
     effectivePlanCode: ctx.effectivePlanCode,
     modules: ctx.modules,
-    usage: await usageSummary(orgId),
+    usage,
     providers: availableProviders(),
   };
 }

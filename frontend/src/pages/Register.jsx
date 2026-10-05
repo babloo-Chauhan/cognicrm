@@ -5,8 +5,12 @@ import { useAuth } from '../lib/auth.jsx';
 import { useAsync } from '../lib/hooks.js';
 import { limitText, priceLabel, startCheckout } from '../lib/checkout.js';
 import { ErrorAlert, Field, Skeleton } from '../components/ui.jsx';
+import { AuthShell } from '../components/AuthShell.jsx';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { toast } from '../lib/toast.js';
 
-const STEPS = ['Company information', 'Admin account', 'Plan', 'Payment / trial', 'Confirmation'];
+const STEPS = ['Company', 'Admin', 'Plan', 'Trial / payment', 'Done'];
 const INDUSTRIES = ['IT & Software', 'Retail', 'Manufacturing', 'Real Estate', 'Education', 'Healthcare', 'Finance', 'Services', 'Other'];
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
@@ -102,14 +106,24 @@ export function Register() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="card wizard">
-        <div className="card-body stack">
-          <div className="brand" style={{ color: 'var(--text)', padding: 0 }}><div className="brand-mark" style={{ color: '#fff' }}>C</div><span>COGNIEOS CRM</span></div>
-          <h1>Create your company workspace</h1>
-          <ol className="steps" aria-label="Registration steps">
-            {STEPS.map((s, i) => <li key={s} className={i === step ? 'active' : i < step ? 'done' : ''} aria-current={i === step ? 'step' : undefined}>{i + 1}. {s}</li>)}
+    <AuthShell wide>
+      <div className="card overflow-hidden">
+        <div className="border-b bg-muted/30 px-6 py-5">
+          <h1 className="text-2xl font-extrabold tracking-tight">Create your company workspace</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Five quick steps — your 14-day trial starts right away, no card needed.</p>
+          <ol className="mt-5 flex items-center gap-2" aria-label="Registration steps">
+            {STEPS.map((s, i) => (
+              <li key={s} className="flex min-w-0 flex-1 items-center gap-2" aria-current={i === step ? 'step' : undefined}>
+                <span className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold transition-all ${i < step ? 'bg-success text-white' : i === step ? 'bg-primary text-primary-foreground shadow-[0_0_0_4px_color-mix(in_oklch,var(--primary)_20%,transparent)]' : 'bg-muted text-muted-foreground'}`}>
+                  {i < step ? <Check className="size-3.5" /> : i + 1}
+                </span>
+                <span className={`hidden truncate text-xs font-semibold md:block ${i === step ? 'text-foreground' : 'text-muted-foreground'}`}>{s}</span>
+                {i < STEPS.length - 1 && <span className={`h-px flex-1 ${i < step ? 'bg-success' : 'bg-border'}`} />}
+              </li>
+            ))}
           </ol>
+        </div>
+        <div className="card-body stack" style={{ padding: 24 }}>
           <ErrorAlert error={error} />
 
           {step === 0 && (
@@ -195,7 +209,12 @@ export function Register() {
 
           {step === 4 && result && (
             <div className="stack">
-              <div className="alert alert-info">Your workspace is ready. Keep these details — the Company ID can be used to sign in.</div>
+              <div className="flex flex-col items-center gap-2 py-2 text-center">
+                <span className="grid size-14 place-items-center rounded-full bg-success/15 text-success ring-8 ring-success/5"><CheckCircle2 className="size-7" /></span>
+                <h2 className="text-xl">Your workspace is ready 🎉</h2>
+                <p className="text-sm text-muted-foreground">Keep these details — the Company ID can also be used to sign in.</p>
+                <Button variant="outline" size="sm" onClick={() => { navigator.clipboard?.writeText(`Company ID: ${result.company.companyCode}\nTenant ID: ${result.company.tenantId}\nAdmin: ${result.user.email}`); toast('Copied to clipboard'); }}><Copy />Copy details</Button>
+              </div>
               {notice && <div className={`alert ${notice.tone === 'success' ? 'alert-info' : 'alert-warning'}`}>{notice.text}</div>}
               <dl className="kv">
                 <dt>Company ID</dt><dd className="mono">{result.company.companyCode}</dd>
@@ -207,15 +226,17 @@ export function Register() {
             </div>
           )}
 
-          <div className="row">
-            {step > 0 && step < 4 && <button type="button" className="btn" onClick={() => setStep(step - 1)} disabled={busy}>Back</button>}
-            {step < 3 && <button type="button" className="btn btn-primary right" onClick={next}>Continue</button>}
-            {step === 3 && <button type="button" className="btn btn-primary right" onClick={submit} disabled={busy}>{busy ? 'Creating workspace…' : mode === 'pay' && paid ? 'Create & pay' : 'Create workspace'}</button>}
-            {step === 4 && <button type="button" className="btn btn-primary right" onClick={enter}>Go to dashboard</button>}
+        </div>
+        <div className="flex items-center gap-2 border-t bg-muted/30 px-6 py-4">
+          {step < 4 && <p className="text-sm text-muted-foreground">Have an account? <Link to="/" className="font-medium">Sign in</Link></p>}
+          <div className="ml-auto flex gap-2">
+            {step > 0 && step < 4 && <Button variant="outline" onClick={() => setStep(step - 1)} disabled={busy}><ArrowLeft />Back</Button>}
+            {step < 3 && <Button onClick={next}>Continue<ArrowRight /></Button>}
+            {step === 3 && <Button onClick={submit} disabled={busy}>{busy && <Loader2 className="animate-spin" />}{busy ? 'Creating workspace…' : mode === 'pay' && paid ? 'Create & pay' : 'Create workspace'}</Button>}
+            {step === 4 && <Button onClick={enter}>Go to dashboard<ArrowRight /></Button>}
           </div>
-          {step < 4 && <p className="small muted" style={{ margin: 0 }}>Already have an account? <Link to="/">Sign in</Link></p>}
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }

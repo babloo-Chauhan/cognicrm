@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import {
+  Activity, AlarmClock, Ban, BadgeCheck, Blocks, Building2, CreditCard, FlaskConical, Gauge, IndianRupee, KeyRound, LayoutDashboard,
+  Layers, LogOut, Mail, Menu, Receipt, Repeat, Settings, ShieldCheck, Tag, TimerOff, TrendingUp, Users, Wallet,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { AuthShell } from '../../components/AuthShell.jsx';
 import {
   pdel, pget, platformToken, ppatch, ppost, pput,
 } from '../../lib/api.js';
@@ -15,9 +25,10 @@ import {
 import { toast } from '../../lib/toast.js';
 
 const NAV = [
-  ['', 'Dashboard', '📊'], ['companies', 'Companies', '🏢'], ['subscriptions', 'Subscriptions', '🔁'], ['plans', 'Plans', '🧩'],
-  ['payments', 'Payments', '💳'], ['invoices', 'Invoices', '🧾'], ['coupons', 'Coupons', '🏷️'], ['users', 'Users', '👥'],
-  ['usage', 'Usage', '📈'], ['modules', 'Modules & features', '🧱'], ['audit', 'Audit logs', '🛡️'], ['system', 'System settings', '⚙️'],
+  { group: 'Overview', items: [['', 'Dashboard', LayoutDashboard]] },
+  { group: 'Tenants', items: [['companies', 'Companies', Building2], ['subscriptions', 'Subscriptions', Repeat], ['users', 'Users', Users]] },
+  { group: 'Revenue', items: [['plans', 'Plans', Layers], ['payments', 'Payments', CreditCard], ['invoices', 'Invoices', Receipt], ['coupons', 'Coupons', Tag]] },
+  { group: 'Platform', items: [['usage', 'Usage', Activity], ['modules', 'Modules & features', Blocks], ['audit', 'Audit logs', ShieldCheck], ['system', 'System settings', Settings]] },
 ];
 const SUB_STATUSES = ['trial', 'active', 'past_due', 'cancelled', 'expired', 'suspended'];
 const subTone = (s) => ({ trial: 'pending', active: 'active', past_due: 'overdue', cancelled: 'canceled', expired: 'expired', suspended: 'closed' }[s] || s);
@@ -35,36 +46,66 @@ function PlatformLogin({ onLogin }) {
     } catch (err) { setError(err); }
   };
   return (
-    <div className="auth-page">
-      <form className="card auth-card" onSubmit={submit}>
-        <div className="card-body stack">
-          <div className="brand" style={{ color: 'var(--text)', padding: 0 }}><div className="brand-mark" style={{ color: '#fff' }}>★</div><span>Platform console</span></div>
-          <h1>Super admin sign in</h1>
-          <ErrorAlert error={error} />
-          <Field label="Email"><input className="input" type="email" required autoComplete="username" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-          <Field label="Password"><input className="input" type="password" required autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></Field>
-          <button type="submit" className="btn btn-primary">Sign in</button>
-          <Link className="small" to="/" style={{ textAlign: 'center' }}>← Company login</Link>
+    <AuthShell eyebrow="COGNIEOS Platform">
+      <form className="flex flex-col gap-5" onSubmit={submit}>
+        <div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"><ShieldCheck className="size-3.5" />Platform owner</span>
+          <h1 className="mt-3 text-3xl font-extrabold tracking-tight">Super admin console</h1>
+          <p className="mt-2 text-muted-foreground">Manage every company, plan and payment on the platform.</p>
         </div>
+        <ErrorAlert error={error} />
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="sa-email">Email</Label>
+          <div className="relative"><Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="sa-email" className="h-11 pl-10" type="email" required autoComplete="username" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="sa-password">Password</Label>
+          <div className="relative"><KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="sa-password" className="h-11 pl-10" type="password" required autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
+        </div>
+        <Button type="submit" size="lg" className="h-11 shadow-[0_10px_24px_-10px_var(--primary)]">Sign in</Button>
+        <Link className="text-center text-sm" to="/">← Company login</Link>
       </form>
-    </div>
+    </AuthShell>
   );
 }
 
-function Chart({ title, data, dataKey, kind = 'line', format }) {
+const TOOLTIP_STYLE = { background: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--popover-foreground)', fontSize: 12 };
+const shortMonth = (m) => new Date(`${m}-01T00:00:00`).toLocaleDateString(undefined, { month: 'short' });
+
+function Chart({ title, data, dataKey, kind = 'area', format, color = 'var(--chart-1)', icon: Icon, total }) {
+  const id = `g-${dataKey}`;
+  const axis = { tickLine: false, axisLine: false, fontSize: 11, stroke: 'var(--muted-foreground)' };
   return (
-    <div className="card">
-      <div className="card-header"><h3>{title}</h3></div>
-      <div className="card-body" style={{ height: 220 }}>
+    <section className="card overflow-hidden">
+      <header className="flex items-center gap-2 border-b px-5 py-3.5">
+        {Icon && <span className="grid size-7 place-items-center rounded-lg" style={{ background: `color-mix(in oklch, ${color} 14%, transparent)`, color }}><Icon className="size-4" /></span>}
+        <h3 className="flex-1">{title}</h3>
+        {total != null && <span className="font-[family-name:var(--font-display)] text-sm font-bold">{total}</span>}
+      </header>
+      <div className="h-[230px] px-2 pb-2 pt-4">
         <ResponsiveContainer width="100%" height="100%">
           {kind === 'bar' ? (
-            <BarChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="month" fontSize={11} /><YAxis fontSize={11} allowDecimals={false} tickFormatter={format} /><Tooltip formatter={format} /><Bar dataKey={dataKey} fill="var(--primary)" radius={[4, 4, 0, 0]} /></BarChart>
+            <BarChart data={data} margin={{ left: -12, right: 8 }}>
+              <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity={0.95} /><stop offset="100%" stopColor={color} stopOpacity={0.4} /></linearGradient></defs>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="month" tickFormatter={shortMonth} {...axis} />
+              <YAxis allowDecimals={false} tickFormatter={format} {...axis} />
+              <Tooltip formatter={format} labelFormatter={shortMonth} contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--accent)', opacity: 0.5 }} />
+              <Bar dataKey={dataKey} fill={`url(#${id})`} radius={[6, 6, 2, 2]} maxBarSize={28} />
+            </BarChart>
           ) : (
-            <LineChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="month" fontSize={11} /><YAxis fontSize={11} allowDecimals={false} tickFormatter={format} /><Tooltip formatter={format} /><Line type="monotone" dataKey={dataKey} stroke="var(--primary)" strokeWidth={2} dot={false} connectNulls /></LineChart>
+            <AreaChart data={data} margin={{ left: -12, right: 8 }}>
+              <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity={0.35} /><stop offset="100%" stopColor={color} stopOpacity={0} /></linearGradient></defs>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="month" tickFormatter={shortMonth} {...axis} />
+              <YAxis allowDecimals={false} tickFormatter={format} {...axis} />
+              <Tooltip formatter={format} labelFormatter={shortMonth} contentStyle={TOOLTIP_STYLE} />
+              <Area type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.5} fill={`url(#${id})`} dot={false} activeDot={{ r: 4 }} />
+            </AreaChart>
           )}
         </ResponsiveContainer>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -75,26 +116,40 @@ function Dashboard() {
   const fill = (rows, key) => rows.map((r) => ({ ...r, [key]: r[key] || 0 }));
   return (
     <>
-      <div className="page-header"><div><h1>Platform dashboard</h1><p>All companies on the platform.</p></div></div>
-      <div className="grid grid-4" style={{ marginBottom: 16 }}>
-        <Stat label="Total companies" value={c.totalCompanies} hint={`${c.pendingCompanies} pending approval`} />
-        <Stat label="Active companies" value={c.activeCompanies} />
-        <Stat label="Trial companies" value={c.trialCompanies} />
-        <Stat label="Expired companies" value={c.expiredCompanies} />
-        <Stat label="Suspended companies" value={c.suspendedCompanies} />
-        <Stat label="Total users" value={c.totalUsers} />
-        <Stat label="Monthly revenue" value={money(c.monthlyRevenue)} />
-        <Stat label="Annual revenue" value={money(c.annualRevenue)} hint="This calendar year" />
-        <Stat label="Active subscriptions" value={c.activeSubscriptions} />
-        <Stat label="Expiring in 7 days" value={c.expiringSubscriptions} />
+      <section className="relative mb-6 overflow-hidden rounded-2xl border bg-sidebar p-6 text-sidebar-foreground shadow-pop sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-24 size-80 rounded-full bg-chart-1/40 blur-[80px]" />
+        <div className="pointer-events-none absolute -bottom-28 left-1/4 size-72 rounded-full bg-chart-3/20 blur-[80px]" />
+        <div className="relative flex flex-wrap items-end justify-between gap-6">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/60">Platform overview</p>
+            <h1 className="mt-1 text-3xl font-extrabold text-sidebar-accent-foreground">{c.totalCompanies} companies · {c.totalUsers} users</h1>
+            <p className="mt-2 text-sm text-sidebar-foreground/70">{c.trialCompanies} on trial, {c.activeSubscriptions} paying, {c.expiringSubscriptions} expiring this week.</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-sidebar-foreground/60">Revenue this month</p>
+            <p className="bg-gradient-to-r from-sidebar-primary to-chart-2 bg-clip-text font-[family-name:var(--font-display)] text-4xl font-extrabold text-transparent">{money(c.monthlyRevenue)}</p>
+          </div>
+        </div>
+      </section>
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Stat icon={Building2} tone="primary" label="Total companies" value={c.totalCompanies} hint={`${c.pendingCompanies} pending approval`} />
+        <Stat icon={BadgeCheck} tone="teal" label="Active companies" value={c.activeCompanies} />
+        <Stat icon={FlaskConical} tone="sky" label="Trial companies" value={c.trialCompanies} />
+        <Stat icon={TimerOff} tone="rose" label="Expired companies" value={c.expiredCompanies} />
+        <Stat icon={Ban} tone="rose" label="Suspended" value={c.suspendedCompanies} />
+        <Stat icon={Users} tone="primary" label="Total users" value={c.totalUsers} />
+        <Stat icon={IndianRupee} tone="amber" label="Monthly revenue" value={money(c.monthlyRevenue)} />
+        <Stat icon={Wallet} tone="amber" label="Annual revenue" value={money(c.annualRevenue)} hint="This calendar year" />
+        <Stat icon={Repeat} tone="teal" label="Active subscriptions" value={c.activeSubscriptions} />
+        <Stat icon={AlarmClock} tone="sky" label="Expiring in 7 days" value={c.expiringSubscriptions} />
       </div>
-      <div className="grid grid-2">
-        <Chart title="Revenue" data={fill(data.charts.revenue, 'revenue')} dataKey="revenue" kind="bar" format={(v) => money(v)} />
-        <Chart title="New companies" data={fill(data.charts.newCompanies, 'companies')} dataKey="companies" kind="bar" />
-        <Chart title="User growth" data={fill(data.charts.userGrowth, 'users')} dataKey="users" />
-        <Chart title="Subscription upgrades" data={fill(data.charts.subscriptionGrowth, 'subscriptions')} dataKey="subscriptions" />
-        <Chart title="Churn (cancelled + expired)" data={fill(data.charts.churn, 'churned')} dataKey="churned" kind="bar" />
-        <Chart title="API usage" data={fill(data.charts.usage, 'apiCalls')} dataKey="apiCalls" />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <Chart title="Revenue" icon={IndianRupee} color="var(--chart-1)" data={fill(data.charts.revenue, 'revenue')} dataKey="revenue" kind="bar" format={(v) => money(v)} />
+        <Chart title="New companies" icon={Building2} color="var(--chart-2)" data={fill(data.charts.newCompanies, 'companies')} dataKey="companies" kind="bar" />
+        <Chart title="User growth" icon={Users} color="var(--chart-5)" data={fill(data.charts.userGrowth, 'users')} dataKey="users" />
+        <Chart title="Subscription upgrades" icon={TrendingUp} color="var(--chart-2)" data={fill(data.charts.subscriptionGrowth, 'subscriptions')} dataKey="subscriptions" />
+        <Chart title="Churn (cancelled + expired)" icon={TimerOff} color="var(--chart-4)" data={fill(data.charts.churn, 'churned')} dataKey="churned" kind="bar" />
+        <Chart title="API usage" icon={Gauge} color="var(--chart-3)" data={fill(data.charts.usage, 'apiCalls')} dataKey="apiCalls" />
       </div>
     </>
   );
@@ -521,7 +576,40 @@ function System() {
   );
 }
 
+function PlatformNav({ admin, onNavigate }) {
+  return (
+    <div className="flex h-full flex-col gap-3 bg-gradient-to-b from-[oklch(0.2_0.06_300)] to-sidebar px-3 py-4 text-sidebar-foreground">
+      <div className="flex items-center gap-3 px-2">
+        <div className="brand-mark size-9"><ShieldCheck className="size-4" /></div>
+        <div>
+          <div className="font-[family-name:var(--font-display)] text-[15px] font-bold text-sidebar-accent-foreground">Platform</div>
+          <div className="text-[11px] text-sidebar-foreground/55">{admin.email}</div>
+        </div>
+      </div>
+      <nav aria-label="Platform" className="flex-1 overflow-y-auto">
+        {NAV.map((g) => (
+          <div key={g.group} className="flex flex-col gap-0.5">
+            <div className="px-3 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">{g.group}</div>
+            {g.items.map(([to, text, Icon]) => (
+              <NavLink
+                key={to}
+                to={`/super-admin/${to}`}
+                end={!to}
+                onClick={onNavigate}
+                className={({ isActive }) => cn('flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:no-underline', isActive && 'bg-gradient-to-r from-sidebar-primary/25 to-sidebar-primary/5 text-sidebar-accent-foreground')}
+              >
+                {({ isActive }) => <><Icon className={cn('size-[18px]', isActive ? 'text-sidebar-primary' : 'text-sidebar-foreground/55')} />{text}</>}
+              </NavLink>
+            ))}
+          </div>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
 export function SuperAdminApp() {
+  const [navOpen, setNavOpen] = useState(false);
   const [admin, setAdmin] = useState(null);
   const [loading, setLoading] = useState(Boolean(platformToken.get()));
   useEffect(() => {
@@ -532,21 +620,24 @@ export function SuperAdminApp() {
   if (!admin) return <PlatformLogin onLogin={setAdmin} />;
   const logout = () => { platformToken.set(null); setAdmin(null); };
   return (
-    <div className="app">
-      <nav className="sidebar platform" aria-label="Platform">
-        <div className="brand"><div className="brand-mark">★</div><span>Platform</span></div>
-        {NAV.map(([to, text, icon]) => (
-          <NavLink key={to} to={`/super-admin/${to}`} end={!to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-            <span className="icon" aria-hidden="true">{icon}</span>{text}
-          </NavLink>
-        ))}
-      </nav>
-      <div className="main">
+    <div className="flex h-full">
+      <aside className="hidden w-[256px] shrink-0 border-r border-sidebar-border lg:block"><PlatformNav admin={admin} /></aside>
+      <Sheet open={navOpen} onOpenChange={setNavOpen}>
+        <SheetContent side="left" className="w-[270px] p-0" showCloseButton={false}>
+          <SheetTitle className="sr-only">Platform navigation</SheetTitle>
+          <PlatformNav admin={admin} onNavigate={() => setNavOpen(false)} />
+        </SheetContent>
+      </Sheet>
+      <div className="main flex-1">
         <header className="topbar">
-          <strong>Super admin console</strong>
+          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setNavOpen(true)} aria-label="Open navigation"><Menu /></Button>
+          <span className="inline-flex items-center gap-2 font-semibold"><ShieldCheck className="size-4 text-primary" />Super admin console</span>
           <span className="spacer" />
-          <span className="small muted">{admin.name} · {label(admin.role)}</span>
-          <button type="button" className="btn btn-sm" onClick={logout}>Log out</button>
+          <span className="hidden text-right leading-tight sm:block">
+            <span className="block text-[13px] font-semibold">{admin.name}</span>
+            <span className="block text-[11px] text-muted-foreground">{label(admin.role)}</span>
+          </span>
+          <Button variant="outline" size="sm" onClick={logout}><LogOut />Log out</Button>
         </header>
         <main className="content">
           <Routes>
