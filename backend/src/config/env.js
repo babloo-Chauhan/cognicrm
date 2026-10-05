@@ -1,4 +1,11 @@
 import 'dotenv/config';
+import dns from 'node:dns';
+
+// Node's resolver on some Windows/ISP setups refuses SRV queries (querySrv ECONNREFUSED)
+// for mongodb+srv URIs. Use public DNS unless overridden via DNS_SERVERS (comma-separated, 'system' to skip).
+if (process.env.DNS_SERVERS !== 'system') {
+  dns.setServers((process.env.DNS_SERVERS || '8.8.8.8,1.1.1.1').split(',').map((x) => x.trim()));
+}
 
 const isTest = process.env.NODE_ENV === 'test';
 
