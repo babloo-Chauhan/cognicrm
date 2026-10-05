@@ -264,6 +264,20 @@ describe('subscriptions, modules and limits', () => {
     expect((await http().get(api('/calls')).set(a.auth)).status).toBe(200);
   });
 
+  it('lead conversion needs the customers module; deals only when in plan', async () => {
+    const a = await registerOrg('Company A', { plan: 'FREE' });
+    const lead = await http().post(api('/leads')).set(a.auth).send({ name: 'Convert me', company: 'Acme' });
+    const blocked = await http().post(api(`/leads/${lead.body.id}/convert`)).set(a.auth).send({});
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.code).toBe('MODULE_NOT_IN_PLAN');
+    await Organization.updateOne({ _id: a.org.id }, { moduleOverrides: { enabled: ['customers'], disabled: [] } });
+    invalidateTenant(a.org.id);
+    const ok = await http().post(api(`/leads/${lead.body.id}/convert`)).set(a.auth).send({});
+    expect(ok.status).toBe(200);
+    expect(ok.body.contact).toBeTruthy();
+    expect(ok.body.deal).toBeNull(); // deals module not in FREE
+  });
+
   it('returns PLAN_LIMIT_REACHED at the limit', async () => {
     const a = await registerOrg('Company A', { plan: 'FREE' }); // 2 users, 100 leads
     await addUser(a, { role: 'employee' });

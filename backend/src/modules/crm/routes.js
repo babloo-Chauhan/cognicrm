@@ -6,7 +6,7 @@ import { requirePermission } from '../../middleware/auth.js';
 import { checkLimit } from '../saas/usage.js';
 import { validateDealStage } from './pipelines.js';
 import { normalizePhone } from '../../lib/phone.js';
-import { badRequest, notFound } from '../../lib/errors.js';
+import { AppError, badRequest, notFound } from '../../lib/errors.js';
 import { crudRouter } from './crud.js';
 import { IO_SPECS } from './importExport.js';
 import { getCustomerContext } from './lookup.js';
@@ -57,8 +57,13 @@ router.use('/accounts', crudRouter(Account, {
 
 // Lead extras must be registered before the generic CRUD router (which owns "/:id")
 router.post('/leads/:id/convert', requirePermission('leads:update'), requirePermission('contacts:create'), async (req, res) => {
+  // Converting creates customers (and a deal), so those modules must be in the plan, not just leads
+  if (!req.tenant.modules.includes('customers')) {
+    throw new AppError(403, 'Converting a lead needs the customers module. Upgrade your plan.', 'MODULE_NOT_IN_PLAN', { module: 'customers' });
+  }
+  const withDeal = req.body?.createDeal !== false && req.tenant.modules.includes('deals');
   await checkLimit(req.orgId, 'customers', 2);
-  if (req.body?.createDeal !== false) await checkLimit(req.orgId, 'deals');
+  if (withDeal) await checkLimit(req.orgId, 'deals');
   const lead = await Lead.findOne({ _id: req.params.id, organizationId: req.orgId });
   if (!lead) throw notFound('Lead');
   if (lead.status === 'converted') throw badRequest('Lead is already converted');
@@ -73,7 +78,7 @@ router.post('/leads/:id/convert', requirePermission('leads:update'), requirePerm
     company: lead.company, accountId: account?._id, ownerId: lead.ownerId,
   });
   let deal = null;
-  if (req.body?.createDeal !== false) {
+  if (withDeal) {
     deal = await Deal.create({
       organizationId: req.orgId, name: req.body?.dealName || `${lead.company || lead.name} deal`,
       value: lead.estimatedValue || 0, contactId: contact._id, accountId: account?._id, leadId: lead._id, ownerId: lead.ownerId,

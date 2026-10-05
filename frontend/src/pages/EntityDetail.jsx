@@ -134,8 +134,8 @@ export function EntityDetail({ entity }) {
         <div className="row">
           <ContactActions phone={data.phone} email={data.email} name={cfg.nameOf(data)} related={related} />
           {data.phone && <button type="button" className="btn" onClick={() => setScheduling(true)}>📅 Callback</button>}
-          {entity === 'leads' && data.status !== 'converted' && <button type="button" className="btn" onClick={qualify}>🤖 Qualify</button>}
-          {entity === 'leads' && data.status !== 'converted' && <button type="button" className="btn" onClick={convert}>Convert</button>}
+          {entity === 'leads' && data.status !== 'converted' && hasModule('ai') && <button type="button" className="btn" onClick={qualify}>🤖 Qualify</button>}
+          {entity === 'leads' && data.status !== 'converted' && hasModule('customers') && <button type="button" className="btn" onClick={convert}>Convert</button>}
           <button type="button" className="btn btn-primary" onClick={() => setEditing(data)}>Edit</button>
         </div>
       </div>
