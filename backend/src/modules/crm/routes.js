@@ -3,6 +3,8 @@ import {
   Account, Appointment, Contact, Deal, Lead, Note, Order, Organization, Task, Ticket,
 } from '../../models/index.js';
 import { requirePermission } from '../../middleware/auth.js';
+import { checkLimit } from '../saas/usage.js';
+import { validateDealStage } from './pipelines.js';
 import { normalizePhone } from '../../lib/phone.js';
 import { badRequest, notFound } from '../../lib/errors.js';
 import { crudRouter } from './crud.js';
@@ -13,7 +15,7 @@ import { scoreDeal, scoreLead } from '../ai/insights.js';
 import { notifyTaskAssigned } from '../notifications/reminders.js';
 
 const router = Router();
-router.use(requirePermission('crm:read', 'crm:write'));
+// Each entity checks `<resource>:<action>` (see crudRouter `resource`); extra routes check explicitly below.
 
 // Keeps a lead's stored score in step with the record, so lists and the next-best-action card agree.
 // (Deals are left alone: the forecast falls back to stage probability until a deal is scored.)
@@ -30,6 +32,8 @@ async function normalizePhoneField(doc, req) {
 }
 
 router.use('/contacts', crudRouter(Contact, {
+  resource: 'contacts',
+  limit: 'customers',
   io: IO_SPECS.contacts,
   searchFields: ['firstName', 'lastName', 'email', 'phone', 'company'],
   filterFields: ['accountId', 'ownerId'],
@@ -43,6 +47,8 @@ router.use('/contacts', crudRouter(Contact, {
 }));
 
 router.use('/accounts', crudRouter(Account, {
+  resource: 'accounts',
+  limit: 'customers',
   io: IO_SPECS.accounts,
   searchFields: ['name', 'industry', 'website'],
   filterFields: ['ownerId', 'industry'],
@@ -50,7 +56,9 @@ router.use('/accounts', crudRouter(Account, {
 }));
 
 // Lead extras must be registered before the generic CRUD router (which owns "/:id")
-router.post('/leads/:id/convert', async (req, res) => {
+router.post('/leads/:id/convert', requirePermission('leads:update'), requirePermission('contacts:create'), async (req, res) => {
+  await checkLimit(req.orgId, 'customers', 2);
+  if (req.body?.createDeal !== false) await checkLimit(req.orgId, 'deals');
   const lead = await Lead.findOne({ _id: req.params.id, organizationId: req.orgId });
   if (!lead) throw notFound('Lead');
   if (lead.status === 'converted') throw badRequest('Lead is already converted');
@@ -81,11 +89,13 @@ router.post('/leads/:id/convert', async (req, res) => {
   res.json({ lead, contact, account, deal });
 });
 
-router.post('/leads/:id/score', async (req, res) => {
+router.post('/leads/:id/score', requirePermission('leads:update'), async (req, res) => {
   res.json(await scoreLead(req.orgId, req.params.id));
 });
 
 router.use('/leads', crudRouter(Lead, {
+  resource: 'leads',
+  limit: 'leads',
   io: IO_SPECS.leads,
   searchFields: ['name', 'email', 'phone', 'company'],
   filterFields: ['status', 'source', 'ownerId'],
@@ -94,19 +104,23 @@ router.use('/leads', crudRouter(Lead, {
   activity: { type: 'lead_created', title: (d) => `Lead created: ${d.name}`, related: (d) => ({ leadId: d._id }) },
 }));
 
-router.post('/deals/:id/score', async (req, res) => {
+router.post('/deals/:id/score', requirePermission('deals:update'), async (req, res) => {
   res.json(await scoreDeal(req.orgId, req.params.id));
 });
 
 router.use('/deals', crudRouter(Deal, {
+  resource: 'deals',
+  limit: 'deals',
   io: IO_SPECS.deals,
   searchFields: ['name'],
-  filterFields: ['stage', 'ownerId', 'accountId', 'contactId'],
+  filterFields: ['stage', 'ownerId', 'accountId', 'contactId', 'pipelineId'],
+  onCreate: (doc, req) => validateDealStage(doc, req.orgId),
   activity: {
     type: 'deal_created', title: (d) => `Deal created: ${d.name}`,
     related: (d) => ({ dealId: d._id, contactId: d.contactId, accountId: d.accountId, leadId: d.leadId }),
   },
   onUpdate: async (doc, before, req) => {
+    if (before.stage !== doc.stage || String(before.pipelineId) !== String(doc.pipelineId)) await validateDealStage(doc, req.orgId);
     if (before.stage !== doc.stage) {
       doc.lastActivityAt = new Date();
       await logActivity(req.orgId, {
@@ -119,6 +133,7 @@ router.use('/deals', crudRouter(Deal, {
 }));
 
 router.use('/tickets', crudRouter(Ticket, {
+  resource: 'tickets',
   io: IO_SPECS.tickets,
   searchFields: ['subject', 'description'],
   filterFields: ['status', 'priority', 'assigneeId', 'contactId', 'accountId'],
@@ -129,6 +144,7 @@ router.use('/tickets', crudRouter(Ticket, {
 }));
 
 router.use('/tasks', crudRouter(Task, {
+  resource: 'tasks',
   io: IO_SPECS.tasks,
   searchFields: ['title', 'description'],
   filterFields: ['status', 'assigneeId', 'priority', 'related.leadId', 'related.contactId', 'related.dealId'],
@@ -144,12 +160,14 @@ router.use('/tasks', crudRouter(Task, {
 }));
 
 router.use('/notes', crudRouter(Note, {
+  resource: 'notes',
   searchFields: ['body'],
   onCreate: async (doc, req) => { doc.authorId = req.user._id; },
   activity: { type: 'note', title: (d) => d.body.slice(0, 120), related: (d) => d.related || {} },
 }));
 
 router.use('/appointments', crudRouter(Appointment, {
+  resource: 'appointments',
   searchFields: ['title'],
   filterFields: ['userId', 'status'],
   defaultSort: { startAt: 1 },
@@ -158,13 +176,14 @@ router.use('/appointments', crudRouter(Appointment, {
   activity: { type: 'appointment', title: (d) => `Appointment: ${d.title}`, related: (d) => d.related || {} },
 }));
 
-router.use('/orders', crudRouter(Order, { searchFields: ['orderNumber'], filterFields: ['status', 'contactId'] }));
+router.use('/orders', crudRouter(Order, {
+  resource: 'orders', searchFields: ['orderNumber'], filterFields: ['status', 'contactId'] }));
 
-router.get('/timeline/:entityType/:id', async (req, res) => {
+router.get('/timeline/:entityType/:id', requirePermission('crm:read'), async (req, res) => {
   res.json({ items: await getTimeline(req.orgId, req.params.entityType, req.params.id, req.query) });
 });
 
-router.get('/customer-context', async (req, res) => {
+router.get('/customer-context', requirePermission('crm:read'), async (req, res) => {
   const { phone, contactId, leadId } = req.query;
   if (!phone && !contactId && !leadId) throw badRequest('phone, contactId or leadId is required');
   res.json(await getCustomerContext(req.orgId, { phone, contactId, leadId }));

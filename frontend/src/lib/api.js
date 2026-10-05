@@ -20,10 +20,10 @@ export function setToken(token) {
 
 export class ApiError extends Error {
   constructor(status, body) {
-    super(body?.error?.message || `Request failed (${status})`);
+    super(body?.message || body?.error?.message || `Request failed (${status})`);
     this.status = status;
-    this.code = body?.error?.code;
-    this.details = body?.error?.details;
+    this.code = body?.code || body?.error?.code;
+    this.details = body?.errors?.length ? body.errors : body?.error?.details;
   }
 }
 
@@ -85,3 +85,43 @@ export async function upload(path, file, query) {
   if (!res.ok) throw new ApiError(res.status, data);
   return data;
 }
+
+/**
+ * Super-admin (platform) client. Separate token storage: a platform session never mixes with a company session.
+ */
+const PLATFORM_TOKEN_KEY = 'cognieos.platformToken';
+let onPlatformUnauthorized = () => {};
+
+export const platformToken = {
+  get() {
+    try { return localStorage.getItem(PLATFORM_TOKEN_KEY); } catch { return null; }
+  },
+  set(token) {
+    try {
+      if (token) localStorage.setItem(PLATFORM_TOKEN_KEY, token);
+      else localStorage.removeItem(PLATFORM_TOKEN_KEY);
+    } catch { /* storage unavailable */ }
+  },
+  onUnauthorized(fn) { onPlatformUnauthorized = fn; },
+};
+
+export async function platformApi(path, { method = 'GET', body, query } = {}) {
+  const url = new URL(`${BASE}/platform${path}`, window.location.origin);
+  for (const [k, v] of Object.entries(query || {})) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
+  const headers = {};
+  const token = platformToken.get();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const res = await fetch(url, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => null);
+  if (res.status === 401 && token) onPlatformUnauthorized();
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
+export const pget = (path, query) => platformApi(path, { query });
+export const ppost = (path, body) => platformApi(path, { method: 'POST', body: body ?? {} });
+export const pput = (path, body) => platformApi(path, { method: 'PUT', body });
+export const ppatch = (path, body) => platformApi(path, { method: 'PATCH', body });
+export const pdel = (path, body) => platformApi(path, { method: 'DELETE', body });

@@ -8,6 +8,7 @@ import { Timeline } from '../components/Timeline.jsx';
 import { ContactActions } from '../calling/CallButton.jsx';
 import { useCalls } from '../calling/CallContext.jsx';
 import { ENTITY_CONFIG } from './entities.js';
+import { useAuth } from '../lib/auth.jsx';
 import { EntityForm } from './EntityForm.jsx';
 import { CallbackModal } from '../calling/CallbackModal.jsx';
 import { DocList } from './sales/DocList.jsx';
@@ -82,6 +83,7 @@ function Notes({ type, id }) {
 
 export function EntityDetail({ entity }) {
   const { id } = useParams();
+  const { hasModule } = useAuth();
   const navigate = useNavigate();
   const cfg = ENTITY_CONFIG[entity];
   const { data, loading, error, reload } = useAsync(() => get(`/${entity}/${id}`), [entity, id]);
@@ -181,7 +183,7 @@ export function EntityDetail({ entity }) {
               </dl>
             </div>
           </div>
-          {(entity === 'leads' || entity === 'deals') && <NextBestAction kind={cfg.type} id={data.id} phone={data.phone} name={cfg.nameOf(data)} />}
+          {(entity === 'leads' || entity === 'deals') && hasModule('ai') && <NextBestAction kind={cfg.type} id={data.id} phone={data.phone} name={cfg.nameOf(data)} />}
         </div>
       </div>
       {scheduling && <CallbackModal phone={data.phone} name={cfg.nameOf(data)} related={related} onClose={() => setScheduling(false)} />}

@@ -7,7 +7,7 @@ import { isMobileDevice, TERMINAL } from './callState.js';
 const CallContext = createContext(null);
 
 export function CallProvider({ children }) {
-  const { user, can } = useAuth();
+  const { user, can, hasModule } = useAuth();
   const [capabilities, setCapabilities] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
   const [incoming, setIncoming] = useState(null); // { call, context }
@@ -35,14 +35,16 @@ export function CallProvider({ children }) {
     return () => clearInterval(t);
   }, [user]);
 
+  // Only companies whose plan includes calling have telephony to ask about
+  const callingEnabled = Boolean(user) && hasModule('calling');
   useEffect(() => {
-    if (!user) return;
+    if (!callingEnabled) return;
     get('/telephony/capabilities').then(setCapabilities).catch(() => setCapabilities({ configured: false, capabilities: {} }));
     get('/calls/active').then((r) => {
       const mine = r.items.find((c) => String(c.agentId?.id || c.agentId) === String(user.id));
       if (mine) setActiveCall(mine);
     }).catch(() => {});
-  }, [user]);
+  }, [user, callingEnabled]);
 
   // Browser softphone: provider WebRTC SDK (only loaded when the provider supports it)
   useEffect(() => {

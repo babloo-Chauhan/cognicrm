@@ -10,6 +10,7 @@ import { createAlert } from '../modules/compliance/fraud.js';
 import { Organization } from '../models/index.js';
 import { expireQuotes, markOverdueInvoices } from '../modules/sales/service.js';
 import { remindDueTasks, remindUpcomingAppointments } from '../modules/notifications/reminders.js';
+import { expireSubscriptions } from '../modules/saas/jobs.js';
 
 /** Hangs up calls that exceed the organization's maximum call duration (fraud control). */
 export async function enforceMaxDuration(now = new Date()) {
@@ -45,6 +46,7 @@ const JOBS = [
   { name: 'call log retention', everyMs: 6 * 3600000, run: applyCallLogRetention },
   { name: 'quote expiry', everyMs: 3600000, run: expireQuotes },
   { name: 'overdue invoices', everyMs: 3600000, run: markOverdueInvoices },
+  { name: 'subscription expiry', everyMs: 300000, run: expireSubscriptions },
 ];
 
 /** Simple in-process scheduler. Each job never overlaps with itself. */

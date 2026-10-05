@@ -3,64 +3,9 @@ import { Link } from 'react-router-dom';
 import { get, patch, post } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { dateTime, label } from '../lib/format.js';
-import { DataTable, ErrorAlert, Field, Loading, Modal, StatusBadge, Tabs } from '../components/ui.jsx';
+import { DataTable, ErrorAlert, Field, Loading, Modal, Tabs } from '../components/ui.jsx';
 import { useAsync } from '../lib/hooks.js';
-
-function Team() {
-  const { can, user } = useAuth();
-  const { data, reload } = useAsync(() => get('/users'), []);
-  const [form, setForm] = useState(null);
-  const [error, setError] = useState(null);
-  const save = async () => {
-    setError(null);
-    try {
-      if (form.id) await patch(`/users/${form.id}`, { name: form.name, role: form.role, phone: form.phone, active: form.active });
-      else await post('/users', form);
-      setForm(null);
-      reload();
-    } catch (e) {
-      setError(e);
-    }
-  };
-  return (
-    <div className="stack">
-      <div className="row">
-        <span className="muted">Agents need a phone number for bridge calling when the browser softphone is unavailable.</span>
-        {can('users:manage') && <button type="button" className="btn btn-primary right" onClick={() => setForm({ role: 'agent' })}>+ Invite user</button>}
-      </div>
-      <div className="card">
-        <DataTable
-          rows={data?.items}
-          onRowClick={(u) => (can('users:manage') || u.id === user.id) && setForm(u)}
-          columns={[
-            { key: 'name', label: 'Name' },
-            { key: 'email', label: 'Email' },
-            { key: 'role', label: 'Role', render: (u) => label(u.role) },
-            { key: 'phone', label: 'Phone' },
-            { key: 'active', label: 'Status', render: (u) => <StatusBadge status={u.active ? 'active' : 'closed'} text={u.active ? 'Active' : 'Disabled'} /> },
-          ]}
-        />
-      </div>
-      {form && (
-        <Modal title={form.id ? form.name : 'New user'} onClose={() => setForm(null)} footer={<><button type="button" className="btn" onClick={() => setForm(null)}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Save</button></>}>
-          <ErrorAlert error={error} />
-          <div className="form-grid">
-            <Field label="Name"><input className="input" value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-            {!form.id && <Field label="Email"><input className="input" type="email" value={form.email || ''} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>}
-            {!form.id && <Field label="Temporary password"><input className="input" type="password" value={form.password || ''} onChange={(e) => setForm({ ...form, password: e.target.value })} /></Field>}
-            <Field label="Role">
-              <select className="input" value={form.role} disabled={!can('users:manage')} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {['admin', 'supervisor', 'agent', 'user'].map((r) => <option key={r} value={r}>{label(r)}</option>)}
-              </select>
-            </Field>
-            <Field label="Phone (for bridge calls)"><input className="input" value={form.phone || ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-            {form.id && can('users:manage') && <label className="checkbox"><input type="checkbox" checked={form.active !== false} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Active</label>}
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
+import { CompanySettings } from './CompanySettings.jsx';
 
 function Templates() {
   const { data, reload } = useAsync(() => get('/message-templates'), []);
@@ -220,20 +165,20 @@ function Billing() {
 export function Settings() {
   const { can } = useAuth();
   const tabs = [
-    { key: 'team', label: 'Team' },
-    { key: 'billing', label: 'Billing' },
+    { key: 'company', label: 'Company' },
+    { key: 'billing', label: 'Invoice details' },
     { key: 'templates', label: 'Message templates' },
     { key: 'webchat', label: 'Web chat' },
     ...(can('audit:read') ? [{ key: 'audit', label: 'Audit log' }] : []),
   ];
-  const [tab, setTab] = useState('team');
+  const [tab, setTab] = useState('company');
   return (
     <>
       <div className="page-header">
-        <div><h1>Settings</h1><p>Telephony, recording, compliance and provider integrations live in <Link to="/calling?tab=settings">Calling → Settings</Link>.</p></div>
+        <div><h1>Settings</h1><p>Users and roles are under <Link to="/team">Team</Link>; your plan under <Link to="/billing">Billing</Link>; telephony in <Link to="/calling?tab=settings">Calling → Settings</Link>.</p></div>
       </div>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
-      {tab === 'team' && <Team />}
+      {tab === 'company' && <CompanySettings />}
       {tab === 'billing' && <Billing />}
       {tab === 'templates' && <Templates />}
       {tab === 'webchat' && <WebChat />}

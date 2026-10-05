@@ -18,7 +18,9 @@ const accountSchema = new Schema({
   phone: String,
   ownerId: { type: ObjectId, ref: 'User' },
   customerId: String,
+  tags: [String],
 });
+accountSchema.index({ organizationId: 1, createdAt: -1 });
 export const Account = model('Account', accountSchema);
 
 const contactSchema = new Schema({
@@ -31,11 +33,14 @@ const contactSchema = new Schema({
   ownerId: { type: ObjectId, ref: 'User' },
   customerId: { type: String, index: true },
   lastContactedAt: Date,
+  tags: [String],
   ...commonPrefs,
 });
+contactSchema.index({ organizationId: 1, createdAt: -1 });
+contactSchema.index({ organizationId: 1, email: 1 });
 export const Contact = model('Contact', contactSchema);
 
-export const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'unqualified', 'converted'];
+export const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'unqualified', 'converted'];
 const leadSchema = new Schema({
   name: { type: String, required: true },
   email: String,
@@ -54,16 +59,23 @@ const leadSchema = new Schema({
   scoreFactors: [{ _id: false, factor: String, points: Number, detail: String }],
   lastContactedAt: Date,
   convertedContactId: { type: ObjectId, ref: 'Contact' },
+  notes: String,
+  tags: [String],
   ...commonPrefs,
 });
+leadSchema.index({ organizationId: 1, status: 1 });
+leadSchema.index({ organizationId: 1, createdAt: -1 });
+leadSchema.index({ organizationId: 1, email: 1 });
 export const Lead = model('Lead', leadSchema);
 
+// Stages of the default pipeline. Companies add pipelines with their own stages; every pipeline has won/lost.
 export const DEAL_STAGES = ['prospecting', 'qualification', 'proposal', 'negotiation', 'won', 'lost'];
 const dealSchema = new Schema({
   name: { type: String, required: true },
   value: { type: Number, default: 0 },
   currency: { type: String, default: 'INR' },
-  stage: { type: String, enum: DEAL_STAGES, default: 'prospecting' },
+  pipelineId: { type: ObjectId, ref: 'Pipeline' },
+  stage: { type: String, default: 'prospecting', trim: true }, // a stage key of the deal's pipeline
   probability: Number,
   expectedCloseDate: Date,
   contactId: { type: ObjectId, ref: 'Contact' },
@@ -74,6 +86,8 @@ const dealSchema = new Schema({
   scoreFactors: [{ _id: false, factor: String, points: Number, detail: String }],
   lastActivityAt: Date,
 });
+dealSchema.index({ organizationId: 1, stage: 1 });
+dealSchema.index({ organizationId: 1, createdAt: -1 });
 export const Deal = model('Deal', dealSchema);
 
 const ticketSchema = new Schema({
@@ -85,6 +99,7 @@ const ticketSchema = new Schema({
   accountId: { type: ObjectId, ref: 'Account' },
   assigneeId: { type: ObjectId, ref: 'User' },
 });
+ticketSchema.index({ organizationId: 1, status: 1 });
 export const Ticket = model('Ticket', ticketSchema);
 
 const relatedRefs = {
@@ -107,6 +122,7 @@ const taskSchema = new Schema({
   reminderSentAt: { type: Date, default: null }, // follow-up reminder sent for the current dueAt
 });
 taskSchema.index({ status: 1, reminderSentAt: 1, dueAt: 1 });
+taskSchema.index({ organizationId: 1, status: 1, dueAt: 1 });
 export const Task = model('Task', taskSchema);
 
 const noteSchema = new Schema({

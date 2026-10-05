@@ -10,7 +10,10 @@ import { registerTelephonyProvider } from '../src/modules/telephony/registry.js'
 import { registerMessagingProvider } from '../src/modules/messaging/providers.js';
 import { setLlmOverride } from '../src/modules/ai/llm.js';
 import { setTranscriberOverride } from '../src/modules/ai/transcription.js';
-import { Organization, PhoneNumber } from '../src/models/index.js';
+import { CompanySubscription, Organization, PhoneNumber } from '../src/models/index.js';
+import { findPlan } from '../src/modules/saas/plans.js';
+import { invalidateTenant } from '../src/modules/saas/tenant.js';
+import { flushUsage, resetUsageCounters } from '../src/modules/saas/usage.js';
 
 /**
  * TEST DOUBLE ONLY — never registered outside the test suite.
@@ -145,6 +148,9 @@ export function useDatabase() {
     FakeMessagingProvider.sent = [];
     setLlmOverride(null);
     setTranscriberOverride(null);
+    invalidateTenant();
+    await flushUsage().catch(() => null);
+    resetUsageCounters();
     const collections = await mongoose.connection.db.collections();
     await Promise.all(collections.map((c) => c.deleteMany({})));
   });
@@ -152,14 +158,31 @@ export function useDatabase() {
 
 let counter = 0;
 
-/** Registers an organization and returns { token, user, org, auth } for the admin. */
-export async function registerOrg(name = 'Acme') {
+/** Puts a company on a plan directly (test setup), bypassing checkout. */
+export async function setPlan(orgId, code, fields = {}) {
+  const plan = await findPlan(code);
+  await CompanySubscription.updateOne(
+    { organizationId: orgId },
+    { $set: { planId: plan._id, planCode: plan.code, status: 'active', endDate: null, trialEnd: null, ...fields } },
+  );
+  invalidateTenant(orgId);
+}
+
+/**
+ * Registers an organization and returns { token, user, org, auth } for the admin.
+ * Feature suites run on ENTERPRISE (every module); SaaS suites pass `plan: null` to keep the signup trial.
+ */
+export async function registerOrg(name = 'Acme', { plan = 'ENTERPRISE', ...extra } = {}) {
   counter += 1;
   const res = await http().post('/api/v1/auth/register').send({
-    organizationName: name, name: 'Admin User', email: `admin${counter}@example.com`, password: 'password123',
+    organizationName: name, name: 'Admin User', email: `admin${counter}@example.com`, password: 'password123', ...extra,
   });
   if (res.status !== 201) throw new Error(`register failed: ${JSON.stringify(res.body)}`);
-  return { token: res.body.token, user: res.body.user, org: res.body.organization, auth: { Authorization: `Bearer ${res.body.token}` } };
+  if (plan) await setPlan(res.body.organization.id, plan);
+  return {
+    token: res.body.token, user: res.body.user, org: res.body.organization, company: res.body.company, body: res.body,
+    email: res.body.user.email, auth: { Authorization: `Bearer ${res.body.token}` },
+  };
 }
 
 export async function addUser(admin, { role = 'agent', name = 'Agent', phone } = {}) {

@@ -2,7 +2,8 @@ import express, { Router } from 'express';
 import { badRequest, notFound } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
 import { readTable, sendTable } from '../../lib/spreadsheet.js';
-import { requirePermission } from '../../middleware/auth.js';
+import { requirePermission, requireResource } from '../../middleware/auth.js';
+import { checkLimit, remaining } from '../saas/usage.js';
 import { logActivity } from '../timeline/service.js';
 import { buildExport, importRows, templateHeaders } from './importExport.js';
 
@@ -45,6 +46,8 @@ export function crudRouter(Model, {
   afterCreate, // (doc, req) after the record is saved, e.g. notifications
   activity, // { type, title: (doc) => string, related: (doc) => ({...}) }
   io,
+  resource, // permission prefix: GET → `${resource}:read`, POST → create, PATCH → update, DELETE → delete
+  limit, // plan limit key checked before creating (users, customers, leads, deals)
 } = {}) {
   const router = Router();
   const name = `${Model.collection.collectionName}`;
@@ -67,6 +70,11 @@ export function crudRouter(Model, {
       const format = ['csv', 'xlsx'].includes(req.query.format) ? req.query.format : undefined;
       const table = await readTable(req.body, format);
       const dryRun = ['1', 'true'].includes(String(req.query.dryRun));
+      if (limit && !dryRun && (req.query.mode || 'skip') !== 'update') {
+        // Rejects a file that would push the company over its plan limit (header row excluded)
+        const rows = Math.max(0, table.length - 1);
+        if (rows > await remaining(req.orgId, limit)) await checkLimit(req.orgId, limit, rows);
+      }
       const summary = await importRows(Model, io, req.orgId, table, { mode: req.query.mode || 'skip', dryRun });
       if (!dryRun) {
         await audit(req, `${name}.import`, {
@@ -77,6 +85,8 @@ export function crudRouter(Model, {
       res.json(summary);
     });
   }
+
+  if (resource) router.use(requireResource(resource));
 
   router.get('/', async (req, res) => {
     const filter = listFilter(req, searchFields, filterFields);
@@ -97,6 +107,7 @@ export function crudRouter(Model, {
   });
 
   router.post('/', async (req, res) => {
+    if (limit) await checkLimit(req.orgId, limit);
     const data = { ...clean(req.body), organizationId: req.orgId };
     const doc = new Model(data);
     if (onCreate) await onCreate(doc, req);

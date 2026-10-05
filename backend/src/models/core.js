@@ -42,6 +42,14 @@ export const DEFAULT_SETTINGS = () => ({
   customAgentStatuses: [],
   leadScoring: null,
   billing: DEFAULT_BILLING(),
+  // Tenant branding & localisation (never global)
+  branding: { brandName: '', logoUrl: '', primaryColor: '#4f46e5' },
+  currency: 'INR',
+  dateFormat: 'DD/MM/YYYY',
+  emailSettings: { fromName: '', replyTo: '' },
+  notificationSettings: { email: true, push: true, inApp: true },
+  invoiceSettings: { footer: '', showLogo: true },
+  taxSettings: { taxName: 'GST', defaultRate: 18, pricesIncludeTax: false },
 });
 
 /** Seller details and defaults printed on quotations and invoices. */
@@ -66,21 +74,45 @@ export const DEFAULT_BILLING = () => ({
   defaultTerms: '',
 });
 
+export const COMPANY_STATUSES = ['pending', 'active', 'suspended'];
+
+/** A company (tenant). `organizationId` on every tenant document points here — it is the company id. */
 const organizationSchema = new Schema({
   name: { type: String, required: true },
   slug: { type: String, unique: true },
+  companyCode: { type: String, unique: true, sparse: true }, // CMP-000001 (human-facing company id)
+  tenantId: { type: String, unique: true, sparse: true }, // TEN-8F72K91X (opaque tenant key)
+  legalName: String,
+  email: { type: String, lowercase: true, trim: true },
+  phone: String,
+  address: { line1: String, city: String, state: String, country: String, postalCode: String },
+  taxId: String, // GST / VAT number
+  website: String,
+  logoUrl: String,
+  industry: String,
+  status: { type: String, enum: COMPANY_STATUSES, default: 'active', index: true },
+  suspendedReason: String,
+  // Platform overrides on top of the plan's modules
+  moduleOverrides: { enabled: { type: [String], default: [] }, disabled: { type: [String], default: [] } },
   publicChatKey: { type: String, unique: true, default: () => crypto.randomBytes(12).toString('hex') },
   settings: { type: Schema.Types.Mixed, default: DEFAULT_SETTINGS },
 });
 export const Organization = model('Organization', organizationSchema, { tenant: false });
 
+// Built-in role keys (companies can add custom roles; see the Role model)
 export const ROLES = ['admin', 'supervisor', 'agent', 'user'];
 
 const userSchema = new Schema({
   name: { type: String, required: true },
-  email: { type: String, required: true, lowercase: true, trim: true, unique: true },
+  // Unique per company, so one person can belong to several companies (company switching)
+  email: { type: String, required: true, lowercase: true, trim: true },
+  userCode: { type: String, unique: true, sparse: true }, // USR-000001
   passwordHash: { type: String, required: true, select: false },
-  role: { type: String, enum: ROLES, default: 'agent' },
+  role: { type: String, default: 'agent', trim: true }, // a Role.key of the user's company
+  department: String,
+  designation: String,
+  avatarUrl: String,
+  lastLogin: Date,
   phone: String, // agent's own phone, used for bridge (callback) calling
   extension: String,
   departmentIds: [{ type: ObjectId, ref: 'Department' }],
@@ -89,6 +121,8 @@ const userSchema = new Schema({
   tokenVersion: { type: Number, default: 0 },
   extraPermissions: [String],
 });
+userSchema.index({ organizationId: 1, email: 1 }, { unique: true });
+userSchema.index({ email: 1 });
 export const User = model('User', userSchema);
 
 const departmentSchema = new Schema({
@@ -111,15 +145,23 @@ const integrationSchema = new Schema({
 integrationSchema.index({ organizationId: 1, kind: 1, provider: 1 }, { unique: true });
 export const Integration = model('Integration', integrationSchema);
 
+/** Security log. Company actions carry organizationId; platform-only actions (plans, settings) do not. */
 const auditLogSchema = new Schema({
+  organizationId: { type: ObjectId, ref: 'Organization' },
   userId: { type: ObjectId, ref: 'User' },
+  platformUserId: { type: ObjectId, ref: 'PlatformUser' },
+  actorType: { type: String, enum: ['user', 'platform', 'system'], default: 'user' },
   action: { type: String, required: true },
+  module: String,
   resourceType: String,
   resourceId: String,
   ip: String,
+  userAgent: String,
   details: Schema.Types.Mixed,
 });
-export const AuditLog = model('AuditLog', auditLogSchema);
+auditLogSchema.index({ organizationId: 1, createdAt: -1 });
+auditLogSchema.index({ action: 1, createdAt: -1 });
+export const AuditLog = model('AuditLog', auditLogSchema, { tenant: false });
 
 const alertSchema = new Schema({
   type: { type: String, required: true }, // fraud.volume, fraud.failed_calls, fraud.international, ...

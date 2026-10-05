@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { checkLimit } from '../saas/usage.js';
 import { z } from 'zod';
 import { Readable } from 'node:stream';
 import {
@@ -165,6 +166,7 @@ router.get('/call-campaigns', async (req, res) => {
   res.json({ items: await CallCampaign.find(filter).sort({ createdAt: -1 }) });
 });
 router.post('/call-campaigns', requirePermission('campaigns:manage'), validate(campaignSchema), async (req, res) => {
+  await checkLimit(req.orgId, 'automations');
   const campaign = await CallCampaign.create({ ...req.body, organizationId: req.orgId });
   await audit(req, 'campaign.create', { resourceType: 'CallCampaign', resourceId: campaign._id, details: { mode: campaign.mode } });
   res.status(201).json(campaign);

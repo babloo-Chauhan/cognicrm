@@ -16,7 +16,8 @@ import { renderDocument } from './render.js';
 import { notify } from '../notifications/service.js';
 
 const router = Router();
-router.use(['/products', '/quotes', '/invoices', '/sales'], requirePermission('crm:read', 'crm:write'));
+// Reading needs sales:read; any change needs sales:write
+router.use(['/products', '/quotes', '/invoices', '/sales'], (req, res, next) => requirePermission(req.method === 'GET' ? 'sales:read' : 'sales:write')(req, res, next));
 
 router.use('/products', crudRouter(Product, { searchFields: ['name', 'sku', 'hsnSac'], filterFields: ['active'], defaultSort: { name: 1 } }));
 
