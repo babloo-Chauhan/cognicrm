@@ -63,20 +63,33 @@ npm install --omit=dev --no-audit --no-fund
 # Stop our own process first so it releases its port before we choose one.
 pm2 delete cognicrm-api >/dev/null 2>&1 || true
 
+# Set KEY=VALUE in .env, replacing the line if present or appending it.
+set_env() {
+  local key="$1" val="$2"
+  if grep -qE "^${key}=" .env; then
+    # use a non-/ delimiter since values contain https:// and slashes
+    sed -i "s#^${key}=.*#${key}=${val}#" .env
+  else
+    printf '%s=%s\n' "$key" "$val" >> .env
+  fi
+}
+
 if [ ! -f .env ]; then
   echo "!! backend/.env missing. Creating from .env.example — EDIT IT before go-live."
   cp .env.example .env
-  # production-sane defaults
-  sed -i "s#^NODE_ENV=.*#NODE_ENV=production#"                                   .env
-  sed -i "s#^PUBLIC_BASE_URL=.*#PUBLIC_BASE_URL=https://${DOMAIN}#"              .env
-  sed -i "s#^CORS_ORIGIN=.*#CORS_ORIGIN=https://${DOMAIN}#"                      .env
-  sed -i "s#^FRONTEND_URL=.*#FRONTEND_URL=https://${DOMAIN}#"                    .env
-  # generate secrets if they are blank
-  sed -i "s#^JWT_SECRET=.*#JWT_SECRET=$(openssl rand -hex 32)#"                 .env
-  sed -i "s#^ENCRYPTION_KEY=.*#ENCRYPTION_KEY=$(openssl rand -hex 32)#"         .env
-  sed -i "s#^URL_SIGNING_SECRET=.*#URL_SIGNING_SECRET=$(openssl rand -hex 32)#" .env
+  # generate secrets if they are blank (only on first creation)
+  set_env JWT_SECRET         "$(openssl rand -hex 32)"
+  set_env ENCRYPTION_KEY     "$(openssl rand -hex 32)"
+  set_env URL_SIGNING_SECRET "$(openssl rand -hex 32)"
   echo "   -> wrote backend/.env (MONGO_URI defaults to local mongodb; set it if using Atlas)"
 fi
+
+# Always enforce deployment-derived values (safe to overwrite; not secrets).
+# This fixes a stale .env whose CORS_ORIGIN still pointed at localhost.
+set_env NODE_ENV        production
+set_env PUBLIC_BASE_URL "https://${DOMAIN}"
+set_env CORS_ORIGIN     "https://${DOMAIN}"
+set_env FRONTEND_URL    "https://${DOMAIN}"
 
 # Choose the API port: keep the one in .env if it is free, else pick a free one.
 # (Our own app is already stopped above, so a busy port means ANOTHER service.)
