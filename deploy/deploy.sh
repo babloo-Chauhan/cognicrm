@@ -108,6 +108,35 @@ else
 fi
 echo "   backend will listen on 127.0.0.1:${API_PORT}"
 
+# --- 2b. MongoDB ------------------------------------------------------------
+# The backend refuses to start until Mongo connects. If MONGO_URI points at a
+# local server and nothing is listening on 27017, install + start MongoDB CE.
+# A remote MONGO_URI (e.g. Atlas: mongodb+srv://...) skips local provisioning.
+MONGO_URI_VAL="$(grep -E '^MONGO_URI=' .env | head -1 | cut -d= -f2- | tr -d '[:space:]')"
+is_local_mongo=1
+case "$MONGO_URI_VAL" in
+  ""|*127.0.0.1*|*localhost*) is_local_mongo=1 ;;
+  *) is_local_mongo=0 ;;
+esac
+mongo_up() { (exec 3<>/dev/tcp/127.0.0.1/27017) 2>/dev/null && { exec 3>&- 3<&-; return 0; } || return 1; }
+if [ "$is_local_mongo" = "1" ] && ! mongo_up; then
+  echo "==> MongoDB not running locally — installing/starting MongoDB CE"
+  if ! command -v mongod >/dev/null; then
+    . /etc/os-release
+    CODENAME="${UBUNTU_CODENAME:-${VERSION_CODENAME:-jammy}}"
+    curl -fsSL https://pgp.mongodb.com/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu ${CODENAME}/mongodb-org/7.0 multiverse" \
+      | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list >/dev/null
+    sudo apt-get update -y
+    sudo apt-get install -y mongodb-org
+  fi
+  sudo systemctl enable --now mongod || sudo systemctl start mongod || true
+  # wait for it to accept connections
+  for _ in $(seq 1 15); do mongo_up && break; sleep 2; done
+  mongo_up && echo "   -> MongoDB is up on 127.0.0.1:27017" \
+           || echo "   !! MongoDB still not reachable — backend health check will report the error"
+fi
+
 # --- 3. frontend ------------------------------------------------------------
 echo "==> frontend build (same-origin API)"
 cd "$APP_DIR/frontend"
