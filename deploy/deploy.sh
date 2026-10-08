@@ -15,13 +15,33 @@ APP_DIR="${APP_DIR:-/var/www/cognicrm}"
 REPO="${REPO:-git@github.com:babloo-Chauhan/cognicrm.git}"
 BRANCH="${BRANCH:-main}"
 DOMAIN="${DOMAIN:-crm.cognieos.in}"
-API_PORT="${API_PORT:-5000}"
+# Base port to try. 5000 is often already taken by another app on the box, so
+# default to a less-common one; we still auto-pick a free port if it's in use.
+API_PORT="${API_PORT:-5055}"
 
 echo "==> CogniEOS CRM deploy  (dir=$APP_DIR branch=$BRANCH domain=$DOMAIN)"
 
 # --- 0. prerequisites -------------------------------------------------------
 command -v node >/dev/null || { echo "node not found. Install Node 20+ first."; exit 1; }
 command -v pm2  >/dev/null || { echo "pm2 not found -> npm i -g pm2"; sudo npm i -g pm2; }
+
+# Is a TCP port being LISTENed on (by anything other than our own app)?
+port_in_use() {
+  if command -v ss >/dev/null; then
+    ss -ltnH "sport = :$1" 2>/dev/null | grep -q .
+  else
+    (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && { exec 3>&- 3<&-; return 0; } || return 1
+  fi
+}
+# Pick the first free port at/after the base, so we never collide with another service.
+pick_free_port() {
+  local p="$1"
+  for _ in $(seq 0 20); do
+    port_in_use "$p" || { echo "$p"; return 0; }
+    p=$((p+1))
+  done
+  echo "$1"  # fallback: give back the base
+}
 
 # --- 1. code ----------------------------------------------------------------
 if [ ! -d "$APP_DIR/.git" ]; then
@@ -39,12 +59,15 @@ git reset --hard "origin/$BRANCH"
 echo "==> backend deps"
 cd "$APP_DIR/backend"
 npm install --omit=dev --no-audit --no-fund
+
+# Stop our own process first so it releases its port before we choose one.
+pm2 delete cognicrm-api >/dev/null 2>&1 || true
+
 if [ ! -f .env ]; then
   echo "!! backend/.env missing. Creating from .env.example — EDIT IT before go-live."
   cp .env.example .env
   # production-sane defaults
   sed -i "s#^NODE_ENV=.*#NODE_ENV=production#"                                   .env
-  sed -i "s#^PORT=.*#PORT=${API_PORT}#"                                          .env
   sed -i "s#^PUBLIC_BASE_URL=.*#PUBLIC_BASE_URL=https://${DOMAIN}#"              .env
   sed -i "s#^CORS_ORIGIN=.*#CORS_ORIGIN=https://${DOMAIN}#"                      .env
   sed -i "s#^FRONTEND_URL=.*#FRONTEND_URL=https://${DOMAIN}#"                    .env
@@ -54,19 +77,33 @@ if [ ! -f .env ]; then
   sed -i "s#^URL_SIGNING_SECRET=.*#URL_SIGNING_SECRET=$(openssl rand -hex 32)#" .env
   echo "   -> wrote backend/.env (MONGO_URI defaults to local mongodb; set it if using Atlas)"
 fi
-# read the actual port the app will use
-API_PORT="$(grep -E '^PORT=' .env | cut -d= -f2 | tr -d '[:space:]')"
-API_PORT="${API_PORT:-5000}"
+
+# Choose the API port: keep the one in .env if it is free, else pick a free one.
+# (Our own app is already stopped above, so a busy port means ANOTHER service.)
+CUR_PORT="$(grep -E '^PORT=' .env | head -1 | cut -d= -f2 | tr -d '[:space:]')"
+if [ -n "$CUR_PORT" ] && ! port_in_use "$CUR_PORT"; then
+  API_PORT="$CUR_PORT"
+else
+  API_PORT="$(pick_free_port "${API_PORT}")"
+  [ -n "$CUR_PORT" ] && echo "   port $CUR_PORT is taken by another service -> using free port $API_PORT"
+fi
+# Persist the chosen port into .env (add the line if missing).
+if grep -qE '^PORT=' .env; then
+  sed -i "s#^PORT=.*#PORT=${API_PORT}#" .env
+else
+  printf '\nPORT=%s\n' "${API_PORT}" >> .env
+fi
+echo "   backend will listen on 127.0.0.1:${API_PORT}"
 
 # --- 3. frontend ------------------------------------------------------------
 echo "==> frontend build (same-origin API)"
 cd "$APP_DIR/frontend"
 npm install --no-audit --no-fund
-# Build against the real domain. Empty values also work (relative), but set them
-# explicitly so the bundle is unambiguous.
+# Same-origin: the app calls whatever host/scheme served it, so it can never
+# point at the wrong domain and there is no http/https mixed-content problem.
 cat > .env.production.local <<EOF
-VITE_API_URL=https://${DOMAIN}/api/v1
-VITE_SOCKET_URL=https://${DOMAIN}
+VITE_API_URL=/api/v1
+VITE_SOCKET_URL=/
 EOF
 npm run build
 echo "   -> built $APP_DIR/frontend/dist"
@@ -76,8 +113,24 @@ echo "==> pm2"
 sudo mkdir -p /var/log/cognicrm
 sudo chown -R "$USER":"$USER" /var/log/cognicrm
 cd "$APP_DIR"
-pm2 startOrReload deploy/ecosystem.config.cjs --update-env
+pm2 start deploy/ecosystem.config.cjs --update-env
 pm2 save
+
+# Verify OUR backend actually came up on API_PORT before wiring nginx to it.
+# (Prevents nginx from proxying /api to some other app if ours crashed, e.g. no MongoDB.)
+echo "==> verifying backend on 127.0.0.1:${API_PORT}"
+ok=""
+for i in $(seq 1 15); do
+  body="$(curl -fsS -m 5 "http://127.0.0.1:${API_PORT}/health" 2>/dev/null || true)"
+  if printf '%s' "$body" | grep -q '"status"'; then ok=1; echo "   backend healthy: $body"; break; fi
+  sleep 2
+done
+if [ -z "$ok" ]; then
+  echo "!! Backend did not become healthy on 127.0.0.1:${API_PORT}."
+  echo "   Most likely MongoDB is unreachable (set MONGO_URI in backend/.env) or the app crashed."
+  echo "   Recent logs:"; pm2 logs cognicrm-api --lines 25 --nostream || true
+  exit 1
+fi
 
 # --- 5. nginx ---------------------------------------------------------------
 echo "==> nginx site for $DOMAIN (API port $API_PORT)"
