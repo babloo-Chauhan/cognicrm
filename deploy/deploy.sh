@@ -38,7 +38,7 @@ git reset --hard "origin/$BRANCH"
 # --- 2. backend -------------------------------------------------------------
 echo "==> backend deps"
 cd "$APP_DIR/backend"
-npm ci --omit=dev
+npm install --omit=dev --no-audit --no-fund
 if [ ! -f .env ]; then
   echo "!! backend/.env missing. Creating from .env.example — EDIT IT before go-live."
   cp .env.example .env
@@ -61,7 +61,7 @@ API_PORT="${API_PORT:-5000}"
 # --- 3. frontend ------------------------------------------------------------
 echo "==> frontend build (same-origin API)"
 cd "$APP_DIR/frontend"
-npm ci
+npm install --no-audit --no-fund
 # Build against the real domain. Empty values also work (relative), but set them
 # explicitly so the bundle is unambiguous.
 cat > .env.production.local <<EOF
