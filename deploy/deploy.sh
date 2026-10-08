@@ -88,10 +88,33 @@ sudo ln -sf "$SITE" /etc/nginx/sites-enabled/$DOMAIN
 sudo nginx -t
 sudo systemctl reload nginx
 
+# --- 6. SSL (Let's Encrypt via certbot) -------------------------------------
+# Idempotent: certbot skips reissue if a valid cert exists and only renews near
+# expiry. Non-fatal so a TLS hiccup never breaks the app deploy.
+# Control with: ENABLE_SSL=false to skip; CERTBOT_EMAIL=you@example.com for renewal notices.
+if [ "${ENABLE_SSL:-true}" != "false" ]; then
+  echo "==> SSL for $DOMAIN (certbot)"
+  if ! command -v certbot >/dev/null; then
+    echo "   installing certbot…"
+    sudo apt-get update -y && sudo apt-get install -y certbot python3-certbot-nginx
+  fi
+  if [ -n "${CERTBOT_EMAIL:-}" ]; then
+    EMAIL_ARG="-m ${CERTBOT_EMAIL} --agree-tos"
+  else
+    EMAIL_ARG="--register-unsafely-without-email --agree-tos"
+  fi
+  # Obtain + install the cert for this host and add the HTTP->HTTPS redirect.
+  sudo certbot --nginx -d "$DOMAIN" --non-interactive --redirect $EMAIL_ARG \
+    && sudo systemctl reload nginx \
+    && echo "   -> HTTPS enabled for https://$DOMAIN" \
+    || echo "   !! certbot failed (check DNS -> this host, port 80 open, and rate limits). App still serves on HTTP."
+else
+  echo "==> SSL skipped (ENABLE_SSL=false)"
+fi
+
 echo ""
 echo "==> done."
 echo "    Local health check:"
 curl -fsS "http://127.0.0.1:${API_PORT}/health" && echo " (backend OK)" || echo " (backend NOT responding — check: pm2 logs cognicrm-api)"
 echo ""
-echo "    Next: enable HTTPS ->  sudo certbot --nginx -d ${DOMAIN}"
-echo "    Then: https://${DOMAIN}/  and  https://${DOMAIN}/api/v1/..."
+echo "    App:  https://${DOMAIN}/   API: https://${DOMAIN}/api/v1/   health: https://${DOMAIN}/health"

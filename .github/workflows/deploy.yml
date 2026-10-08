@@ -40,6 +40,8 @@ jobs:
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          CERTBOT_EMAIL: ${{ secrets.CERTBOT_EMAIL }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -47,6 +49,7 @@ jobs:
           port: ${{ secrets.EC2_PORT || 22 }}
           script_stop: true
           command_timeout: 20m
+          envs: CERTBOT_EMAIL
           script: |
             set -e
             APP_DIR=/var/www/cognicrm
