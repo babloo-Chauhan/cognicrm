@@ -121,20 +121,31 @@ esac
 mongo_up() { (exec 3<>/dev/tcp/127.0.0.1/27017) 2>/dev/null && { exec 3>&- 3<&-; return 0; } || return 1; }
 if [ "$is_local_mongo" = "1" ] && ! mongo_up; then
   echo "==> MongoDB not running locally — installing/starting MongoDB CE"
+  # Whole block is best-effort: never abort the deploy here. The backend health
+  # check below gives the definitive pass/fail with logs.
+  set +e
   if ! command -v mongod >/dev/null; then
     . /etc/os-release
     CODENAME="${UBUNTU_CODENAME:-${VERSION_CODENAME:-jammy}}"
-    curl -fsSL https://pgp.mongodb.com/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+    # MongoDB 7.0 supports focal/jammy/noble; fall back to jammy for anything else.
+    case "$CODENAME" in focal|jammy|noble) : ;; *) CODENAME=jammy ;; esac
+    curl -fsSL https://pgp.mongodb.com/server-7.0.asc | sudo gpg --yes --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
     echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu ${CODENAME}/mongodb-org/7.0 multiverse" \
       | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list >/dev/null
     sudo apt-get update -y
     sudo apt-get install -y mongodb-org
   fi
-  sudo systemctl enable --now mongod || sudo systemctl start mongod || true
+  sudo systemctl enable mongod 2>/dev/null
+  sudo systemctl start mongod 2>/dev/null
   # wait for it to accept connections
-  for _ in $(seq 1 15); do mongo_up && break; sleep 2; done
-  mongo_up && echo "   -> MongoDB is up on 127.0.0.1:27017" \
-           || echo "   !! MongoDB still not reachable — backend health check will report the error"
+  for _ in $(seq 1 20); do mongo_up && break; sleep 2; done
+  if mongo_up; then
+    echo "   -> MongoDB is up on 127.0.0.1:27017"
+  else
+    echo "   !! MongoDB still not reachable. If mongod fails to start, the CPU may lack AVX"
+    echo "      (MongoDB 7.0 requires it). Status:"; sudo systemctl status mongod --no-pager -l 2>/dev/null | tail -15
+  fi
+  set -e
 fi
 
 # --- 3. frontend ------------------------------------------------------------
