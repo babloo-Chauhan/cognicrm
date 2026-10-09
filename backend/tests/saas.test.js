@@ -130,6 +130,18 @@ describe('login & company switching', () => {
     expect((await http().get(api('/platform/companies')).set(a.auth)).status).toBe(401);
   });
 
+  it('changes the own password and signs out other devices', async () => {
+    const a = await registerOrg('Company A');
+    const wrong = await http().post(api('/auth/change-password')).set(a.auth).send({ currentPassword: 'nope', newPassword: 'newpass1234' });
+    expect(wrong.status).toBe(400);
+    const ok = await http().post(api('/auth/change-password')).set(a.auth).send({ currentPassword: 'password123', newPassword: 'newpass1234' });
+    expect(ok.status).toBe(200);
+    expect((await http().get(api('/auth/me')).set(a.auth)).status).toBe(401);
+    expect((await http().get(api('/auth/me')).set({ Authorization: `Bearer ${ok.body.token}` })).status).toBe(200);
+    expect((await http().post(api('/auth/login')).send({ email: a.email, password: 'password123' })).status).toBe(401);
+    expect((await http().post(api('/auth/login')).send({ email: a.email, password: 'newpass1234' })).status).toBe(200);
+  });
+
   it('logout everywhere revokes the token', async () => {
     const a = await registerOrg('Company A');
     expect((await http().post(api('/auth/logout')).set(a.auth).send({ all: true })).status).toBe(204);

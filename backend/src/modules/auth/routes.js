@@ -174,6 +174,18 @@ router.post('/auth/logout', async (req, res) => {
   res.status(204).end();
 });
 
+/** Changes the signed-in user's own password; every other device is signed out, this one gets a fresh token. */
+router.post('/auth/change-password', validate(z.object({ currentPassword: z.string().min(1).max(128), newPassword: z.string().min(8).max(128) })), async (req, res) => {
+  const user = await User.findById(req.user._id).select('+passwordHash');
+  if (!(await bcrypt.compare(req.body.currentPassword, user.passwordHash))) throw badRequest('Current password is incorrect');
+  if (req.body.currentPassword === req.body.newPassword) throw badRequest('New password must be different from the current one');
+  user.passwordHash = await bcrypt.hash(req.body.newPassword, 10);
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
+  await user.save();
+  await audit(req, 'auth.password_changed', { module: 'auth' });
+  res.json(await session(user));
+});
+
 // ---------------------------------------------------------------- Company profile & settings
 router.get('/organization', async (req, res) => {
   res.json(await Organization.findById(req.orgId));
