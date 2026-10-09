@@ -1,8 +1,8 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import {
-  AgentStatus, DEFAULT_SETTINGS, Notification, Organization, PushToken, User,
+  AgentStatus, BrandAsset, DEFAULT_SETTINGS, Notification, Organization, PushToken, User,
 } from '../../models/index.js';
 import { requirePermission, signToken } from '../../middleware/auth.js';
 import { validate } from '../../middleware/common.js';
@@ -240,6 +240,64 @@ router.patch('/company/profile', requirePermission('settings:manage'), validate(
   invalidateTenant(req.orgId);
   await audit(req, 'company.update', { module: 'settings', resourceType: 'Organization', resourceId: org._id, details: { fields: Object.keys(req.body) } });
   res.json(org);
+});
+
+// ---------------------------------------------------------------- Company logo
+const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+/** Content type from the file's signature; the client's Content-Type header is not trusted. SVG is refused (it can carry script). */
+function sniffImage(buf) {
+  if (buf.length > 8 && buf[0] === 0x89 && buf.toString('ascii', 1, 4) === 'PNG') return 'image/png';
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+const logoPath = (orgId) => `/api/v1/branding/${orgId}/logo?v=${Date.now()}`;
+
+async function setBrandLogo(orgId, url) {
+  const org = await Organization.findById(orgId);
+  const settings = { ...DEFAULT_SETTINGS(), ...(org.settings || {}) };
+  settings.branding = { ...settings.branding, logoUrl: url };
+  org.settings = settings;
+  org.markModified('settings');
+  await org.save();
+  invalidateTenant(orgId);
+  return org;
+}
+
+/** Uploads the company logo (PNG / JPG / WebP, up to 1 MB) as the raw request body; it becomes branding.logoUrl. */
+router.post('/company/logo', requirePermission('settings:manage'), express.raw({ type: () => true, limit: '1mb' }), async (req, res) => {
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw badRequest('Send the image file as the request body');
+  const contentType = sniffImage(req.body);
+  if (!contentType || !LOGO_TYPES.includes(contentType)) throw badRequest('Logo must be a PNG, JPG or WebP image');
+  await BrandAsset.updateOne(
+    { organizationId: req.orgId },
+    { $set: { contentType, data: req.body, size: req.body.length } },
+    { upsert: true },
+  );
+  const org = await setBrandLogo(req.orgId, logoPath(req.orgId));
+  await audit(req, 'company.logo_updated', { module: 'settings', resourceType: 'Organization', resourceId: req.orgId, details: { bytes: req.body.length, contentType } });
+  res.json({ logoUrl: org.settings.branding.logoUrl, organization: org });
+});
+
+router.delete('/company/logo', requirePermission('settings:manage'), async (req, res) => {
+  await BrandAsset.deleteOne({ organizationId: req.orgId });
+  const org = await setBrandLogo(req.orgId, '');
+  await audit(req, 'company.logo_removed', { module: 'settings', resourceType: 'Organization', resourceId: req.orgId });
+  res.json({ logoUrl: '', organization: org });
+});
+
+/** Public: a company's logo, cached by the browser/app (the ?v= stamp changes on every upload). */
+publicAuthRouter.get('/branding/:orgId/logo', async (req, res) => {
+  if (!/^[a-f0-9]{24}$/i.test(req.params.orgId)) throw badRequest('Invalid id');
+  const asset = await BrandAsset.findOne({ organizationId: req.params.orgId }).lean();
+  if (!asset) return res.status(404).end();
+  res.set({
+    'Content-Type': asset.contentType,
+    'Cache-Control': 'public, max-age=604800, immutable',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  res.send(Buffer.from(asset.data.buffer || asset.data));
 });
 
 // ---------------------------------------------------------------- Push tokens & notifications

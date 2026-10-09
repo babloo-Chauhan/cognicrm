@@ -183,3 +183,12 @@ export const PlatformSettings = model('PlatformSettings', platformSettingsSchema
 export async function getPlatformSettings() {
   return PlatformSettings.findOneAndUpdate({ key: 'global' }, { $setOnInsert: { key: 'global' } }, { upsert: true, returnDocument: 'after' }).lean();
 }
+
+/** A company's uploaded logo (one per company), served publicly so apps and invoices can show it. */
+const brandAssetSchema = new Schema({
+  organizationId: { type: ObjectId, ref: 'Organization', required: true, unique: true },
+  contentType: { type: String, enum: ['image/png', 'image/jpeg', 'image/webp'], required: true },
+  data: { type: Buffer, required: true },
+  size: Number,
+});
+export const BrandAsset = model('BrandAsset', brandAssetSchema, { tenant: false });

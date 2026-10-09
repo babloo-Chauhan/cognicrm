@@ -130,6 +130,31 @@ describe('login & company switching', () => {
     expect((await http().get(api('/platform/companies')).set(a.auth)).status).toBe(401);
   });
 
+  it('uploads a company logo that employees see and anyone can fetch', async () => {
+    const a = await registerOrg('Company A');
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), crypto.randomBytes(64)]);
+    const up = await http().post(api('/company/logo')).set(a.auth).set('Content-Type', 'image/png').send(png);
+    expect(up.status).toBe(200);
+    expect(up.body.logoUrl).toMatch(new RegExp(`^/api/v1/branding/${a.org.id}/logo\\?v=\\d+$`));
+
+    const emp = await addUser(a, { role: 'employee' });
+    const me = await http().get(api('/auth/me')).set(emp.auth);
+    expect(me.body.organization.settings.branding.logoUrl).toBe(up.body.logoUrl);
+
+    const file = await http().get(up.body.logoUrl);
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toBe('image/png');
+    expect(Buffer.compare(file.body, png)).toBe(0);
+
+    // Not an image (SVG can carry script), and employees cannot change branding
+    const svg = await http().post(api('/company/logo')).set(a.auth).set('Content-Type', 'image/svg+xml').send(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'));
+    expect(svg.status).toBe(400);
+    expect((await http().post(api('/company/logo')).set(emp.auth).set('Content-Type', 'image/png').send(png)).status).toBe(403);
+
+    expect((await http().delete(api('/company/logo')).set(a.auth)).body.logoUrl).toBe('');
+    expect((await http().get(up.body.logoUrl)).status).toBe(404);
+  });
+
   it('signs in with the employee ID instead of the email', async () => {
     const a = await registerOrg('Company A');
     const code = a.user.userCode;

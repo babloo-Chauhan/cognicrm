@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { get, patch } from '../lib/api.js';
+import { useRef, useState } from 'react';
+import { del, get, patch, upload } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useAsync } from '../lib/hooks.js';
 import { ErrorAlert, Field, Skeleton } from '../components/ui.jsx';
@@ -8,6 +8,49 @@ import { toast } from '../lib/toast.js';
 const TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'Australia/Sydney', 'UTC'];
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD'];
 const DATE_FORMATS = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'];
+
+/** Logo upload with preview; employees see this logo in the web sidebar and in their mobile app. */
+function LogoUploader({ value, editable, onChange }) {
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const pick = async (file) => {
+    if (!file) return;
+    setError(null);
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return setError(new Error('Choose a PNG, JPG or WebP image'));
+    if (file.size > 1024 * 1024) return setError(new Error('The logo must be 1 MB or smaller'));
+    setBusy(true);
+    try {
+      onChange((await upload('/company/logo', file)).logoUrl);
+      toast('Logo updated — employees will see it in their app');
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+  const remove = async () => {
+    setBusy(true);
+    try { onChange((await del('/company/logo')).logoUrl); toast('Logo removed'); } catch (e) { setError(e); } finally { setBusy(false); }
+  };
+  return (
+    <div className="full flex flex-wrap items-center gap-4">
+      <div className="grid size-20 place-items-center overflow-hidden rounded-2xl border bg-muted/40">
+        {value ? <img src={value} alt="Company logo" className="size-full object-contain" /> : <span className="text-xs text-muted-foreground">No logo</span>}
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <button type="button" className="btn btn-sm btn-primary" disabled={!editable || busy} onClick={() => fileRef.current?.click()}>{busy ? 'Uploading…' : value ? 'Change logo' : 'Upload logo'}</button>
+          {value && <button type="button" className="btn btn-sm" disabled={!editable || busy} onClick={remove}>Remove</button>}
+        </div>
+        <small className="text-xs text-muted-foreground">PNG, JPG or WebP, up to 1 MB. A square image works best. Shown to your employees in the web app and the mobile app.</small>
+        {error && <small className="text-xs text-destructive">{error.message}</small>}
+      </div>
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
+    </div>
+  );
+}
 
 /** Company profile, branding and localisation — all stored per tenant. */
 export function CompanySettings() {
@@ -81,8 +124,12 @@ export function CompanySettings() {
         <Field label="Postal code">{input(p.address.postalCode, (v) => setAddr('postalCode', v))}</Field>
       </div></div>
       <div className="card"><div className="card-header"><h3>Branding</h3></div><div className="card-body form-grid">
-        <Field label="Brand name">{input(pr.branding.brandName, (v) => setNested('branding', 'brandName', v))}</Field>
-        <Field label="Logo URL (https)">{input(pr.branding.logoUrl, (v) => setNested('branding', 'logoUrl', v))}</Field>
+        <LogoUploader
+          value={pr.branding.logoUrl}
+          editable={editable}
+          onChange={(url) => { setNested('branding', 'logoUrl', url); org.reload(); refresh(); }}
+        />
+        <Field label="Brand name" hint="Shown to employees instead of the company name, e.g. in the app">{input(pr.branding.brandName, (v) => setNested('branding', 'brandName', v))}</Field>
         <Field label="Primary colour">{input(pr.branding.primaryColor, (v) => setNested('branding', 'primaryColor', v), { type: 'color', style: { height: 38, padding: 4 } })}</Field>
       </div></div>
       <div className="card"><div className="card-header"><h3>Localisation, tax & notifications</h3></div><div className="card-body form-grid">
