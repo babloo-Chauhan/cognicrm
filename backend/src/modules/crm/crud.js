@@ -43,6 +43,7 @@ export function crudRouter(Model, {
   defaultSort = { createdAt: -1 },
   onCreate,
   onUpdate,
+  afterUpdate, // (doc, req) after the update is saved
   afterCreate, // (doc, req) after the record is saved, e.g. notifications
   activity, // { type, title: (doc) => string, related: (doc) => ({...}) }
   io,
@@ -129,6 +130,7 @@ export function crudRouter(Model, {
     doc.set(clean(req.body));
     if (onUpdate) await onUpdate(doc, before, req);
     await doc.save();
+    if (afterUpdate) await afterUpdate(doc, req);
     res.json(doc);
   });
 

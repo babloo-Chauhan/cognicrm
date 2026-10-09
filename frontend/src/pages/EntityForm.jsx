@@ -3,6 +3,18 @@ import { get } from '../lib/api.js';
 import { label } from '../lib/format.js';
 import { Field } from '../components/ui.jsx';
 import { ENTITY_CONFIG } from './entities.js';
+import { useTeam } from '../lib/team.js';
+
+/** Picks an active team member (lead owner, task assignee…). */
+export function UserSelect({ value, onChange }) {
+  const team = useTeam();
+  return (
+    <select className="input" value={value || ''} onChange={(e) => onChange(e.target.value || null)}>
+      <option value="">— Unassigned —</option>
+      {team.map((u) => <option key={u.id} value={u.id}>{u.name}{u.designation ? ` · ${u.designation}` : ''}</option>)}
+    </select>
+  );
+}
 
 export function RefSelect({ entity, value, onChange }) {
   const [items, setItems] = useState([]);
@@ -44,6 +56,8 @@ export function EntityForm({ entity, value, onChange }) {
           );
         } else if (f.type === 'textarea') {
           input = <textarea {...common} value={v || ''} onChange={(e) => set(f.key, e.target.value)} />;
+        } else if (f.type === 'user') {
+          input = <UserSelect value={v} onChange={(id) => set(f.key, id)} />;
         } else if (f.type === 'ref') {
           input = <RefSelect entity={f.ref} value={v} onChange={(id) => set(f.key, id)} />;
         } else if (f.type === 'checkbox') {

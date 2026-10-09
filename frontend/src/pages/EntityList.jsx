@@ -10,6 +10,8 @@ import { ContactActions } from '../calling/CallButton.jsx';
 import { ENTITY_CONFIG } from './entities.js';
 import { EntityForm } from './EntityForm.jsx';
 import { ExportButtons, ImportModal } from './ImportExport.jsx';
+import { OwnerName, useTeam } from '../lib/team.js';
+import { useAuth } from '../lib/auth.jsx';
 
 function cell(entity, cfg, key, row) {
   const v = row[key];
@@ -22,6 +24,7 @@ function cell(entity, cfg, key, row) {
       </span>
     );
   }
+  if (key === 'ownerId' || key === 'assigneeId') return <OwnerName id={v} />;
   if (['status', 'stage', 'priority'].includes(key)) return <StatusBadge status={v} />;
   if (key === 'score') return v != null ? <StatusBadge status={v >= 70 ? 'hot' : v >= 40 ? 'warm' : 'cold'} text={String(v)} /> : '—';
   if (key === 'value' || key === 'unitPrice') return money(v, row.currency);
@@ -40,6 +43,8 @@ export function EntityList({ entity }) {
   // ?q= comes from the global search / command palette
   const [q, setQ] = useState(() => params.get('q') || '');
   const [filter, setFilter] = useState({});
+  const team = useTeam();
+  const { user } = useAuth();
   const [creating, setCreating] = useState(null);
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -116,6 +121,13 @@ export function EntityList({ entity }) {
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <input className="input pl-9" placeholder={`Search ${cfg.title.toLowerCase()}…`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
           </div>
+          {cfg.ownerFilter && (
+            <select className="input w-auto min-w-[160px]" value={filter.ownerId || ''} onChange={(e) => setFilter({ ...filter, ownerId: e.target.value })} aria-label="Filter by owner">
+              <option value="">Everyone's {cfg.title.toLowerCase()}</option>
+              {user && <option value={user.id}>My {cfg.title.toLowerCase()}</option>}
+              {team.filter((u) => u.id !== user?.id).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
           {(cfg.filters || []).map((f) => (
             <select key={f.key} className="input w-auto min-w-[150px]" value={filter[f.key] || ''} onChange={(e) => setFilter({ ...filter, [f.key]: e.target.value })} aria-label={`Filter by ${f.key}`}>
               <option value="">All {label(f.key)}</option>

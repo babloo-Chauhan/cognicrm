@@ -7,6 +7,7 @@ import { useAsync } from '../lib/hooks.js';
 import { Timeline } from '../components/Timeline.jsx';
 import { ContactActions } from '../calling/CallButton.jsx';
 import { useCalls } from '../calling/CallContext.jsx';
+import { OwnerName } from '../lib/team.js';
 import { ENTITY_CONFIG } from './entities.js';
 import { useAuth } from '../lib/auth.jsx';
 import { EntityForm } from './EntityForm.jsx';
@@ -175,7 +176,8 @@ export function EntityDetail({ entity }) {
                       {f.type === 'checkbox' ? (data[f.key] ? 'Yes' : 'No')
                         : f.key === 'value' || f.key === 'estimatedValue' ? money(data[f.key])
                           : f.type === 'date' || f.type === 'datetime' ? dateTime(data[f.key])
-                            : f.type === 'select' ? label(data[f.key]) : (data[f.key] || '—')}
+                            : f.type === 'user' ? <OwnerName id={data[f.key]} />
+                              : f.type === 'select' ? label(data[f.key]) : (data[f.key] || '—')}
                     </dd>
                   </div>
                 ))}

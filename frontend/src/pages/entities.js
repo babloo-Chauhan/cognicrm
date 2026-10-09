@@ -1,6 +1,6 @@
 /**
  * Field configuration for CRM entities: drives list columns, create/edit forms and detail views.
- * type: text | email | phone | number | select | date | textarea | ref
+ * type: text | email | phone | number | select | date | textarea | ref | user (a team member)
  */
 export const ENTITY_CONFIG = {
   leads: {
@@ -10,6 +10,7 @@ export const ENTITY_CONFIG = {
       { key: 'phone', label: 'Phone', type: 'phone' },
       { key: 'email', label: 'Email', type: 'email' },
       { key: 'company', label: 'Company' },
+      { key: 'ownerId', label: 'Assigned to', type: 'user' },
       { key: 'source', label: 'Source', type: 'select', options: ['website', 'referral', 'inbound_call', 'campaign', 'social', 'event', 'cold', 'other'] },
       { key: 'status', label: 'Status', type: 'select', options: ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'unqualified'] },
       { key: 'notes', label: 'Notes', type: 'textarea' },
@@ -17,7 +18,8 @@ export const ENTITY_CONFIG = {
       { key: 'companySize', label: 'Company size', type: 'select', options: ['', '1-10', '11-50', '51-200', '201-1000', '1000+'] },
       { key: 'estimatedValue', label: 'Estimated value', type: 'number' },
     ],
-    columns: ['name', 'company', 'phone', 'status', 'score', 'source'],
+    columns: ['name', 'company', 'phone', 'status', 'score', 'ownerId'],
+    ownerFilter: true,
     filters: [{ key: 'status', options: ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'unqualified', 'converted'] }],
   },
   contacts: {

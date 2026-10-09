@@ -92,3 +92,38 @@ describe('CRM records & timeline', () => {
     expect(res.body.items).toHaveLength(1);
   });
 });
+
+describe('lead assignment', () => {
+  it('admin assigns, an employee reassigns, the new owner is notified', async () => {
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const sita = await addUser(admin, { role: 'sales_executive', name: 'Sita' });
+
+    // Without an owner the creator owns it; the admin can create it already assigned
+    const own = await http().post('/api/v1/leads').set(ravi.auth).send({ name: 'Walk-in' });
+    expect(own.body.ownerId).toBe(ravi.user.id);
+    const lead = await http().post('/api/v1/leads').set(admin.auth).send({ name: 'Mehta', phone: '9876500010', ownerId: ravi.user.id });
+    expect(lead.status).toBe(201);
+    expect(lead.body.ownerId).toBe(ravi.user.id);
+    let notes = await http().get('/api/v1/notifications').set(ravi.auth);
+    expect(notes.body.items.some((n) => n.type === 'lead_assigned' && n.data.leadId === lead.body.id)).toBe(true);
+
+    // Ravi hands it to Sita
+    const moved = await http().patch(`/api/v1/leads/${lead.body.id}`).set(ravi.auth).send({ ownerId: sita.user.id });
+    expect(moved.status).toBe(200);
+    expect(moved.body.ownerId).toBe(sita.user.id);
+    notes = await http().get('/api/v1/notifications').set(sita.auth);
+    expect(notes.body.items.find((n) => n.type === 'lead_assigned').body).toContain('Ravi');
+    const mine = await http().get('/api/v1/leads').query({ ownerId: sita.user.id }).set(sita.auth);
+    expect(mine.body.items.map((l) => l.name)).toEqual(['Mehta']);
+    const timeline = await http().get(`/api/v1/timeline/lead/${lead.body.id}`).set(admin.auth);
+    expect(JSON.stringify(timeline.body)).toContain('Lead assigned to Sita by Ravi');
+
+    // Only members of the same company can own it
+    const other = await registerOrg('Other');
+    expect((await http().patch(`/api/v1/leads/${lead.body.id}`).set(admin.auth).send({ ownerId: other.user.id })).status).toBe(400);
+    // Read-only employees cannot reassign
+    const emp = await addUser(admin, { role: 'employee' });
+    expect((await http().patch(`/api/v1/leads/${lead.body.id}`).set(emp.auth).send({ ownerId: emp.user.id })).status).toBe(403);
+  });
+});

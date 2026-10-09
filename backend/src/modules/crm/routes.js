@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  Account, Appointment, Contact, Deal, Lead, Note, Order, Organization, Task, Ticket,
+  Account, Appointment, Contact, Deal, Lead, Note, Order, Organization, Task, Ticket, User,
 } from '../../models/index.js';
 import { requirePermission } from '../../middleware/auth.js';
 import { checkLimit } from '../saas/usage.js';
@@ -13,6 +13,7 @@ import { getCustomerContext } from './lookup.js';
 import { getTimeline, logActivity } from '../timeline/service.js';
 import { scoreDeal, scoreLead } from '../ai/insights.js';
 import { notifyTaskAssigned } from '../notifications/reminders.js';
+import { notify } from '../notifications/service.js';
 
 const router = Router();
 // Each entity checks `<resource>:<action>` (see crudRouter `resource`); extra routes check explicitly below.
@@ -94,6 +95,28 @@ router.post('/leads/:id/convert', requirePermission('leads:update'), requirePerm
   res.json({ lead, contact, account, deal });
 });
 
+/** The new owner must be an active member of the same company. */
+async function assertAssignable(orgId, userId) {
+  if (!userId) return null;
+  const user = await User.findOne({ _id: userId, organizationId: orgId, active: true }).select('name').lean();
+  if (!user) throw badRequest('Choose an active member of your team');
+  return user;
+}
+
+/** Tells the new owner and records the hand-over on the lead's timeline. */
+async function leadAssigned(doc, req, owner) {
+  await logActivity(req.orgId, {
+    type: 'lead_assigned', title: `Lead assigned to ${owner.name} by ${req.user.name}`,
+    related: { leadId: doc._id }, refType: 'Lead', refId: doc._id, userId: req.user._id,
+  });
+  if (String(doc.ownerId) === String(req.user._id)) return;
+  await notify(req.orgId, doc.ownerId, {
+    type: 'lead_assigned', title: `New lead: ${doc.name}`,
+    body: `Assigned to you by ${req.user.name}${doc.phone ? ` · ${doc.phone}` : ''}`,
+    data: { leadId: String(doc._id) },
+  });
+}
+
 router.post('/leads/:id/score', requirePermission('leads:update'), async (req, res) => {
   res.json(await scoreLead(req.orgId, req.params.id));
 });
@@ -104,8 +127,25 @@ router.use('/leads', crudRouter(Lead, {
   io: IO_SPECS.leads,
   searchFields: ['name', 'email', 'phone', 'company'],
   filterFields: ['status', 'source', 'ownerId'],
-  onCreate: async (doc, req) => { await normalizePhoneField(doc, req); await applyScore(scoreLead, doc, req); },
-  onUpdate: async (doc, _b, req) => { await normalizePhoneField(doc, req); await applyScore(scoreLead, doc, req); },
+  onCreate: async (doc, req) => {
+    // A lead without an owner belongs to whoever created it
+    if (!doc.ownerId) doc.ownerId = req.user._id;
+    else await assertAssignable(req.orgId, doc.ownerId);
+    await normalizePhoneField(doc, req);
+    await applyScore(scoreLead, doc, req);
+  },
+  onUpdate: async (doc, before, req) => {
+    if (String(before.ownerId || '') !== String(doc.ownerId || '')) {
+      const owner = await assertAssignable(req.orgId, doc.ownerId);
+      if (owner) req.leadAssignedTo = owner;
+    }
+    await normalizePhoneField(doc, req);
+    await applyScore(scoreLead, doc, req);
+  },
+  afterUpdate: async (doc, req) => { if (req.leadAssignedTo) await leadAssigned(doc, req, req.leadAssignedTo); },
+  afterCreate: async (doc, req) => {
+    if (String(doc.ownerId) !== String(req.user._id)) await leadAssigned(doc, req, await User.findById(doc.ownerId).select('name').lean());
+  },
   activity: { type: 'lead_created', title: (d) => `Lead created: ${d.name}`, related: (d) => ({ leadId: d._id }) },
 }));
 
