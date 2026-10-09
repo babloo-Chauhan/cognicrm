@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useTheme } from '@/lib/theme';
 import {
   Bell, Bot, Building2, ChartNoAxesCombined, ChevronDown, ChevronsUpDown, CircleHelp, Contact, CreditCard, FileText, Handshake,
-  Inbox, LayoutDashboard, ListChecks, LogOut, Menu, Mic, Monitor, Moon, Package, Phone, Plug, Plus, Receipt, Route, Search, Settings,
+  Inbox, KeyRound, LayoutDashboard, ListChecks, LogOut, Menu, Mic, Monitor, Moon, Package, Phone, Plug, Plus, Receipt, Route, Search, Settings,
   Sparkles, Sun, Target, Ticket, Users, Zap,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
@@ -14,6 +14,7 @@ import { Softphone } from '../calling/Softphone.jsx';
 import { CallPopup } from '../calling/CallPopup.jsx';
 import { WrapUpModal } from '../calling/WrapUpModal.jsx';
 import { ErrorAlert, Modal } from './ui.jsx';
+import { ChangePasswordDialog } from './PasswordDialogs.jsx';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -407,7 +408,10 @@ function UserMenu() {
   const { user, logout, company } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+  const [changingPassword, setChangingPassword] = useState(false);
   return (
+    <>
+    {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button type="button" className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-accent" aria-label="Account menu">
@@ -429,6 +433,7 @@ function UserMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
+          <DropdownMenuItem onSelect={() => setChangingPassword(true)}><KeyRound />Change password</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => navigate('/settings')}><Settings />Settings</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => navigate('/team')}><Users />Team</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => navigate('/billing')}><CreditCard />Billing</DropdownMenuItem>
@@ -448,6 +453,7 @@ function UserMenu() {
         <DropdownMenuItem variant="destructive" onSelect={logout}><LogOut />Log out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    </>
   );
 }
 

@@ -113,6 +113,7 @@ router.patch('/users/:id', async (req, res) => {
   await lastAdminGuard(req, user, { newRole: req.body.role, active: req.body.active });
   for (const k of allowed) if (req.body[k] !== undefined) user[k] = req.body[k];
   if (req.body.password) {
+    if (!canManage) throw forbidden('Use Change password: your current password is required');
     if (String(req.body.password).length < 8) throw badRequest('Password must be at least 8 characters');
     user.passwordHash = await bcrypt.hash(req.body.password, 10);
     user.tokenVersion += 1;

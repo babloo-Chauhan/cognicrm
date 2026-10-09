@@ -167,6 +167,18 @@ describe('login & company switching', () => {
     expect((await http().post(api('/auth/login')).send({ password: 'password123' })).status).toBe(400);
   });
 
+  it('admin resets an employee password; employees cannot set one without the current password', async () => {
+    const a = await registerOrg('Company A');
+    const emp = await addUser(a, { role: 'sales_executive' });
+    // Self-edit through /users must not change the password (a stolen session could take over the account)
+    expect((await http().patch(api(`/users/${emp.user.id}`)).set(emp.auth).send({ password: 'hijacked123' })).status).toBe(403);
+
+    const reset = await http().patch(api(`/users/${emp.user.id}`)).set(a.auth).send({ password: 'Temp-Pass-99' });
+    expect(reset.status).toBe(200);
+    expect((await http().get(api('/auth/me')).set(emp.auth)).status).toBe(401); // signed out everywhere
+    expect((await http().post(api('/auth/login')).send({ employeeId: emp.user.userCode, password: 'Temp-Pass-99' })).status).toBe(200);
+  });
+
   it('changes the own password and signs out other devices', async () => {
     const a = await registerOrg('Company A');
     const wrong = await http().post(api('/auth/change-password')).set(a.auth).send({ currentPassword: 'nope', newPassword: 'newpass1234' });

@@ -7,6 +7,7 @@ import {
   ConfirmDialog, DataTable, ErrorAlert, Field, Modal, Skeleton, StatusBadge, Tabs,
 } from '../components/ui.jsx';
 import { toast } from '../lib/toast.js';
+import { ResetPasswordDialog } from '../components/PasswordDialogs.jsx';
 
 function UserModal({ initial, roles, onClose, onSaved }) {
   const { can, user: me } = useAuth();
@@ -64,6 +65,7 @@ export function Users() {
   const roles = useAsync(() => get('/roles'), []);
   const [form, setForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [resetting, setResetting] = useState(null);
   const roleName = (key) => roles.data?.items.find((r) => r.key === key)?.name || label(key);
   const rows = (users.data?.items || []).filter((u) => !q || `${u.name} ${u.email} ${u.role} ${u.department || ''}`.toLowerCase().includes(q.toLowerCase()));
   if (!users.data) return users.error ? <ErrorAlert error={users.error} /> : <Skeleton />;
@@ -87,13 +89,17 @@ export function Users() {
             {
               key: 'x',
               label: '',
-              render: (u) => can('users:delete') && u.active && u.id !== user.id && (
-                <button type="button" className="btn btn-sm btn-ghost" onClick={(e) => { e.stopPropagation(); setConfirm(u); }}>Remove</button>
+              render: (u) => u.active && u.id !== user.id && (
+                <span className="row" style={{ flexWrap: 'nowrap', justifyContent: 'flex-end' }}>
+                  {can('users:update') && <button type="button" className="btn btn-sm" onClick={(e) => { e.stopPropagation(); setResetting(u); }}>Reset password</button>}
+                  {can('users:delete') && <button type="button" className="btn btn-sm btn-ghost" onClick={(e) => { e.stopPropagation(); setConfirm(u); }}>Remove</button>}
+                </span>
               ),
             },
           ]}
         />
       </div>
+      {resetting && <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />}
       {form && <UserModal initial={form} roles={roles.data?.items || []} onClose={() => setForm(null)} onSaved={() => { setForm(null); users.reload(); }} />}
       {confirm && (
         <ConfirmDialog
