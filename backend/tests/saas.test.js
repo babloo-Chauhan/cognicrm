@@ -424,6 +424,18 @@ describe('billing & payments', () => {
 });
 
 describe('super admin', () => {
+  it('grants the picked plan directly when created without a trial', async () => {
+    const admin = await platformAdmin();
+    const direct = await http().post(api('/platform/companies')).set(admin).send({
+      companyName: 'Delta', email: 'hello@delta.test', adminName: 'Dev', adminEmail: 'dev@delta.test', password: 'password123', planCode: 'ENTERPRISE', trial: false,
+    });
+    expect(direct.status).toBe(201);
+    expect(direct.body.company.subscription).toMatchObject({ planCode: 'ENTERPRISE', status: 'active' });
+
+    const login = await http().post(api('/auth/login')).send({ email: 'dev@delta.test', password: 'password123' });
+    expect((await http().get(api('/calls')).set({ Authorization: `Bearer ${login.body.token}` })).status).toBe(200);
+  });
+
   it('manages companies, plans, subscriptions and modules', async () => {
     const admin = await platformAdmin();
     const created = await http().post(api('/platform/companies')).set(admin).send({

@@ -181,7 +181,7 @@ const createCompanySchema = z.object({
 
 router.post('/platform/companies', validate(createCompanySchema), async (req, res) => {
   const d = req.body;
-  const { org, admin, plan } = await createCompany({ ...d, website: d.website || undefined, adminEmail: d.adminEmail.toLowerCase() }, { status: 'active', planCode: d.planCode, trial: d.trial !== false });
+  const { org, admin, plan } = await createCompany({ ...d, website: d.website || undefined, adminEmail: d.adminEmail.toLowerCase() }, { status: 'active', planCode: d.planCode, trial: d.trial !== false, assigned: true });
   await audit(req, 'company.create', { orgId: org._id, module: 'companies', resourceType: 'Organization', resourceId: org._id, details: { plan: plan.code } });
   res.status(201).json({ company: (await attachSubscriptions([org.toObject()]))[0], admin: { id: String(admin._id), email: admin.email, userCode: admin.userCode } });
 });

@@ -50,14 +50,18 @@ export async function seedCompanyDefaults(orgId) {
  * Starts a subscription: the requested plan if it is free, otherwise the platform trial (if enabled),
  * otherwise the default free plan. Paid plans become active only after a verified payment.
  */
-export async function startSubscription(orgId, { planCode, trial = true } = {}) {
+/**
+ * `assigned`: the plan was picked by a super admin, so with no trial it is granted directly
+ * instead of falling back to the default (free) plan that unpaid self-signups get.
+ */
+export async function startSubscription(orgId, { planCode, trial = true, assigned = false } = {}) {
   await ensureDefaultPlans();
   const settings = await getPlatformSettings();
   const now = new Date();
   const requested = planCode ? await findPlan(planCode) : null;
   if (planCode && (!requested || !requested.active)) throw badRequest('Unknown plan');
   let plan; let status; let trialEnd = null; let endDate = null;
-  if (requested && requested.priceMonthly === 0 && !requested.isCustom) {
+  if (requested && ((requested.priceMonthly === 0 && !requested.isCustom) || (assigned && !trial))) {
     plan = requested; status = 'active';
   } else if (trial && settings.trialEnabled && settings.trialDays > 0) {
     // Trial runs on the plan the company picked (if any), else the platform's trial plan
@@ -87,7 +91,7 @@ export async function startSubscription(orgId, { planCode, trial = true } = {}) 
  * Creates a company with its admin, roles, pipeline, settings and subscription.
  * Caller is responsible for checking that the admin email is not already registered.
  */
-export async function createCompany(input, { status, planCode, trial = true } = {}) {
+export async function createCompany(input, { status, planCode, trial = true, assigned = false } = {}) {
   const settings = await getPlatformSettings();
   const companyStatus = status || (settings.requireApproval ? 'pending' : 'active');
   const defaults = DEFAULT_SETTINGS();
@@ -124,7 +128,7 @@ export async function createCompany(input, { status, planCode, trial = true } = 
     });
     await seedCompanyDefaults(org._id);
     await seedOrganization(org._id);
-    const { subscription, plan } = await startSubscription(org._id, { planCode, trial });
+    const { subscription, plan } = await startSubscription(org._id, { planCode, trial, assigned });
     return { org, admin, subscription, plan };
   } catch (err) {
     // Do not leave a half-created tenant behind
