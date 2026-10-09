@@ -104,15 +104,19 @@ publicAuthRouter.post('/auth/register', validate(registerSchema), async (req, re
   res.status(201).json(await session(admin, { requestedPlan: d.planCode || null }));
 });
 
+// Sign in with the work email or the employee ID (USR-000001) shown on the user's profile
 const loginSchema = z.object({
-  email: z.string().trim().email(),
+  email: optional(z.string().trim().email()),
+  employeeId: optional(z.string().trim().toUpperCase().regex(/^USR-\d{1,12}$/, 'Employee ID looks like USR-000001')),
   password: z.string().min(1).max(128),
   companyCode: optional(z.string().trim().toUpperCase().max(20)), // CMP-000001 or TEN-XXXXXXXX
-});
+}).refine((d) => d.email || d.employeeId, { message: 'Enter your email or employee ID', path: ['email'] });
 
 /** All active accounts with this email + password, across companies (one person, several companies). */
-async function matchingAccounts(email, password) {
-  const users = await User.find({ email: email.toLowerCase(), active: true }).select('+passwordHash');
+async function matchingAccounts(email, password, employeeId) {
+  // Employee IDs are unique across the platform, so they match at most one account
+  const filter = employeeId ? { userCode: employeeId } : { email: email.toLowerCase() };
+  const users = await User.find({ ...filter, active: true }).select('+passwordHash');
   const ok = [];
   for (const u of users) if (await bcrypt.compare(password, u.passwordHash)) ok.push(u);
   return ok;
@@ -131,11 +135,11 @@ async function finishLogin(req, user, accounts) {
 }
 
 publicAuthRouter.post('/auth/login', validate(loginSchema), async (req, res) => {
-  const { email, password, companyCode } = req.body;
-  let accounts = await matchingAccounts(email, password);
+  const { email, employeeId, password, companyCode } = req.body;
+  let accounts = await matchingAccounts(email, password, employeeId);
   if (!accounts.length) {
     log.warn('auth.login_failed', { reason: 'bad_credentials' });
-    throw unauthorized('Invalid email or password');
+    throw unauthorized(employeeId ? 'Invalid employee ID or password' : 'Invalid email or password');
   }
   if (companyCode) {
     const org = await Organization.findOne({ $or: [{ companyCode }, { tenantId: companyCode }] }).select('_id').lean();

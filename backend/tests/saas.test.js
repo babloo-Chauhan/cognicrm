@@ -130,6 +130,18 @@ describe('login & company switching', () => {
     expect((await http().get(api('/platform/companies')).set(a.auth)).status).toBe(401);
   });
 
+  it('signs in with the employee ID instead of the email', async () => {
+    const a = await registerOrg('Company A');
+    const code = a.user.userCode;
+    expect(code).toMatch(/^USR-\d+$/);
+    const ok = await http().post(api('/auth/login')).send({ employeeId: code.toLowerCase(), password: 'password123' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.user.email).toBe(a.email);
+    expect((await http().post(api('/auth/login')).send({ employeeId: code, password: 'wrong-pass' })).status).toBe(401);
+    expect((await http().post(api('/auth/login')).send({ employeeId: 'USR-999999', password: 'password123' })).status).toBe(401);
+    expect((await http().post(api('/auth/login')).send({ password: 'password123' })).status).toBe(400);
+  });
+
   it('changes the own password and signs out other devices', async () => {
     const a = await registerOrg('Company A');
     const wrong = await http().post(api('/auth/change-password')).set(a.auth).send({ currentPassword: 'nope', newPassword: 'newpass1234' });
