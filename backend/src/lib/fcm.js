@@ -8,6 +8,7 @@ import { env } from '../config/env.js';
 
 let account;
 let accessToken = null;
+let warnedUnconfigured = false;
 
 function serviceAccount() {
   if (account !== undefined) return account;
@@ -49,7 +50,11 @@ async function getAccessToken() {
  */
 export async function sendFcm(token, { title, body, data = {}, highPriority = false }) {
   const sa = serviceAccount();
-  if (!sa) return { ok: false, unregistered: false };
+  if (!sa) {
+    if (!warnedUnconfigured) console.warn('FCM: no Firebase service account (FIREBASE_SERVICE_ACCOUNT_FILE) — Android push is not sent');
+    warnedUnconfigured = true;
+    return { ok: false, unregistered: false };
+  }
   const message = {
     token,
     notification: { title, body },

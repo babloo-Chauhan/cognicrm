@@ -16,6 +16,8 @@ export default defineConfig({
       GEMINI_API_KEY: '',
       AI_PROVIDER: '',
       DEEPGRAM_API_KEY: '',
+      FIREBASE_SERVICE_ACCOUNT: '',
+      FIREBASE_SERVICE_ACCOUNT_FILE: '',
       TWILIO_ACCOUNT_SID: '',
       TWILIO_AUTH_TOKEN: '',
     },

@@ -42,6 +42,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           CERTBOT_EMAIL: ${{ secrets.CERTBOT_EMAIL }}
+          FIREBASE_SERVICE_ACCOUNT_B64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -49,7 +50,7 @@ jobs:
           port: ${{ secrets.EC2_PORT || 22 }}
           script_stop: true
           command_timeout: 20m
-          envs: CERTBOT_EMAIL
+          envs: CERTBOT_EMAIL,FIREBASE_SERVICE_ACCOUNT_B64
           script: |
             set -e
             APP_DIR=/var/www/cognicrm

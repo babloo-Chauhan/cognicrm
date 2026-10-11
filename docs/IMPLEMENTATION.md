@@ -32,7 +32,7 @@ monitoring work. Messaging and AI use the same pattern (`be/modules/messaging/pr
 | 11 | Agent states, custom statuses, realtime | ✅ | `be/modules/agents/service.js`, Socket.IO `agent:status` |
 | 12–13 | Blind / warm / consult transfer, add participant, conference | ✅ 🔌 | `transferCall`, `addParticipant` in `be/modules/calls/service.js` |
 | 14 | Recording, permissions, signed URLs, retention | ✅ 🔌 | `be/modules/recordings/service.js` |
-| 15–16 | Transcription pipeline, AI call summary, auto tasks | ✅ 🔌 | `be/modules/ai/pipeline.js`, `summaries.js` (Deepgram + Anthropic) |
+| 15–16 | Transcription pipeline, AI call summary, auto tasks | ✅ 🔌 | `be/modules/ai/pipeline.js`, `summaries.js` (Deepgram + Gemini or Anthropic via `llm.js`; company key first, then `AI_PROVIDER` / server key) |
 | 17–19 | AI voice agent, explicit tool permissions, human escalation with context | ✅ 🔌 | `be/modules/voiceAgents/runtime.js`, `be/modules/ai/tools.js`, `fe/pages/VoiceAgents.jsx` (turn-based gateway; streaming gateway 🧩) |
 | 20–21 | Dispositions (custom), after-call work, wrap-up timer | ✅ | `be/modules/calls/wrapup.js`, `fe/calling/WrapUpModal.jsx` |
 | 22 | Callbacks + reminders + optional auto-dial | ✅ | `be/modules/callbacks/service.js` |

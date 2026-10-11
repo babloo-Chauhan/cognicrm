@@ -91,6 +91,15 @@ set_env PUBLIC_BASE_URL "https://${DOMAIN}"
 set_env CORS_ORIGIN     "https://${DOMAIN}"
 set_env FRONTEND_URL    "https://${DOMAIN}"
 
+# Firebase service account for Android push (FCM). CI passes it base64-encoded from the
+# FIREBASE_SERVICE_ACCOUNT_B64 repo secret; it is written outside git and never echoed.
+if [ -n "${FIREBASE_SERVICE_ACCOUNT_B64:-}" ]; then
+  mkdir -p secrets
+  ( umask 077; printf '%s' "$FIREBASE_SERVICE_ACCOUNT_B64" | base64 -d > secrets/firebase-service-account.json )
+  set_env FIREBASE_SERVICE_ACCOUNT_FILE "$APP_DIR/backend/secrets/firebase-service-account.json"
+  echo "   Firebase service account written (FCM push enabled)"
+fi
+
 # Choose the API port: keep the one in .env if it is free, else pick a free one.
 # (Our own app is already stopped above, so a busy port means ANOTHER service.)
 CUR_PORT="$(grep -E '^PORT=' .env | head -1 | cut -d= -f2 | tr -d '[:space:]')"

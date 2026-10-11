@@ -9,6 +9,7 @@ import { validate } from '../../middleware/common.js';
 import { AppError, badRequest, unauthorized } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
 import { log } from '../../lib/logger.js';
+import { fcmConfigured } from '../../lib/fcm.js';
 import { getTenantContext, invalidateTenant, permissionsFor } from '../saas/tenant.js';
 import { createCompany } from '../saas/provisioning.js';
 
@@ -313,7 +314,7 @@ router.post('/push-tokens', validate(z.object({ token: z.string().min(10), platf
 // How many phones can receive pushes (and dial requests) for the signed-in user.
 router.get('/push-tokens', async (req, res) => {
   const tokens = await PushToken.find({ organizationId: req.orgId, userId: req.user._id }, 'platform provider').lean();
-  res.json({ devices: tokens.length, platforms: [...new Set(tokens.map((t) => t.platform).filter(Boolean))] });
+  res.json({ devices: tokens.length, fcmConfigured: fcmConfigured(), platforms: [...new Set(tokens.map((t) => t.platform).filter(Boolean))] });
 });
 
 router.delete('/push-tokens', async (req, res) => {

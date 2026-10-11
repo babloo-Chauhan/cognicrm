@@ -59,7 +59,7 @@ describe('push devices', () => {
   it('registers, counts and removes a phone', async () => {
     const admin = await registerOrg();
     await http().post('/api/v1/push-tokens').set(admin.auth).send({ token: 'fcm-token-abcdef', platform: 'android', provider: 'fcm' }).expect(204);
-    expect((await http().get('/api/v1/push-tokens').set(admin.auth)).body).toEqual({ devices: 1, platforms: ['android'] });
+    expect((await http().get('/api/v1/push-tokens').set(admin.auth)).body).toEqual({ devices: 1, fcmConfigured: false, platforms: ['android'] });
     await http().delete('/api/v1/push-tokens').set(admin.auth).send({ token: 'fcm-token-abcdef' }).expect(204);
     expect(await PushToken.countDocuments({ userId: admin.user.id })).toBe(0);
   });
