@@ -35,7 +35,7 @@ bash deploy/deploy.sh
 
 The script creates `backend/.env` from the example with generated secrets and production URLs.
 **Edit `backend/.env`** to set `MONGO_URI`, `SUPER_ADMIN_EMAIL`/`SUPER_ADMIN_PASSWORD`, and any
-provider keys (Twilio, Razorpay, Anthropic, …), then re-run `bash deploy/deploy.sh`.
+provider keys (Twilio, Razorpay, Gemini or Anthropic, …), then re-run `bash deploy/deploy.sh`.
 
 ## 3. HTTPS
 

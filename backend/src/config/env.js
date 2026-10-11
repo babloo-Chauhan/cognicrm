@@ -79,6 +79,12 @@ export const env = {
     appSecret: process.env.META_WA_APP_SECRET,
     verifyToken: process.env.META_WA_VERIFY_TOKEN,
   },
+  // gemini | anthropic: which server-wide key to use when both are set (companies can bring their own)
+  aiProvider: process.env.AI_PROVIDER,
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY,
+    model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
+  },
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY,
     model: process.env.AI_MODEL || 'claude-opus-5-5',

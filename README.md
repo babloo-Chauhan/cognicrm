@@ -70,5 +70,5 @@ logged in the CRM. To enable real telephony:
 The UI only enables features the active provider declares. New providers (Vonage, Telnyx, Amazon Connect,
 Asterisk/FreeSWITCH) plug in by extending `backend/src/modules/telephony/TelephonyProvider.js`.
 
-AI features (call summaries, email generation, natural-language assistant, voice agents) need an Anthropic API key;
+AI features (call summaries, email generation, natural-language assistant, voice agents) need a Google Gemini or Anthropic API key;
 transcription needs a Deepgram key. Lead/deal scoring, next best action and forecasting are rule-based and always on.

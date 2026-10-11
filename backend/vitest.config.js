@@ -13,6 +13,8 @@ export default defineConfig({
       ENCRYPTION_KEY: 'test-encryption-key',
       URL_SIGNING_SECRET: 'test-signing-secret',
       ANTHROPIC_API_KEY: '',
+      GEMINI_API_KEY: '',
+      AI_PROVIDER: '',
       DEEPGRAM_API_KEY: '',
       TWILIO_ACCOUNT_SID: '',
       TWILIO_AUTH_TOKEN: '',

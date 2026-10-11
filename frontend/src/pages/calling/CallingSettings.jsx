@@ -28,6 +28,7 @@ const PROVIDER_NOTES = {
   plivo: 'Plivo Console → Overview',
   meta: 'Meta for Developers → WhatsApp → API setup',
   smtp: 'Your mail provider’s SMTP settings',
+  gemini: 'aistudio.google.com → Get API key',
   anthropic: 'console.anthropic.com → API keys',
   deepgram: 'console.deepgram.com → API keys',
 };

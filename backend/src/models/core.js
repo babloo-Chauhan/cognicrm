@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS = () => ({
   telephonyProvider: null,
   smsProvider: null,
   whatsappProvider: null,
+  aiProvider: null,
   wrapUpSeconds: 30,
   recording: {
     enabled: false,

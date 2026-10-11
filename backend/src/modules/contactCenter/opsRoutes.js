@@ -217,7 +217,7 @@ const INTEGRATION_FIELDS = {
   sms: { twilio: ['accountSid', 'authToken'] },
   whatsapp: { twilio: ['accountSid', 'authToken'], meta: ['accessToken', 'phoneNumberId', 'appSecret', 'verifyToken'] },
   email: { smtp: ['host', 'port', 'user', 'pass', 'from'] },
-  ai: { anthropic: ['apiKey'] },
+  ai: { gemini: ['apiKey'], anthropic: ['apiKey'] },
   transcription: { deepgram: ['apiKey'] },
 };
 
@@ -256,7 +256,7 @@ router.put('/integrations/:kind/:provider', requirePermission('settings:manage')
   }
   await Integration.updateOne({ organizationId: req.orgId, kind, provider }, { $set: update }, { upsert: true });
   if (req.body.makeDefault && req.body.enabled) {
-    const key = { telephony: 'telephonyProvider', sms: 'smsProvider', whatsapp: 'whatsappProvider', email: 'emailProvider' }[kind];
+    const key = { telephony: 'telephonyProvider', sms: 'smsProvider', whatsapp: 'whatsappProvider', email: 'emailProvider', ai: 'aiProvider' }[kind];
     if (key) await Organization.updateOne({ _id: req.orgId }, { $set: { [`settings.${key}`]: provider } });
   }
   await audit(req, 'integration.update', { resourceType: 'Integration', details: { kind, provider, enabled: req.body.enabled } });

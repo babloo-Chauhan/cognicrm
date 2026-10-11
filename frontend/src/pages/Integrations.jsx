@@ -16,7 +16,7 @@ const SECTIONS = [
   { kind: 'sms', title: 'SMS', icon: MessageSquare, text: 'Send and receive SMS in the unified inbox.' },
   { kind: 'whatsapp', title: 'WhatsApp', icon: MessageCircle, text: 'Twilio WhatsApp or the Meta Cloud API.' },
   { kind: 'email', title: 'Email', icon: Mail, text: 'SMTP for quotations, invoices and notifications.' },
-  { kind: 'ai', title: 'AI', icon: Bot, text: 'Anthropic Claude for summaries, scoring and the assistant.' },
+  { kind: 'ai', title: 'AI', icon: Bot, text: 'Google Gemini or Anthropic Claude for summaries, scoring and the assistant.' },
   { kind: 'transcription', title: 'Transcription', icon: Bot, text: 'Deepgram speech-to-text for call recordings.' },
 ];
 
