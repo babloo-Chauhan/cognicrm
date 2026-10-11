@@ -8,6 +8,7 @@ import {
 } from '../components/ui.jsx';
 import { toast } from '../lib/toast.js';
 import { ResetPasswordDialog } from '../components/PasswordDialogs.jsx';
+import { useValidation } from '../lib/useValidation.js';
 
 function UserModal({ initial, roles, onClose, onSaved }) {
   const { can, user: me } = useAuth();
@@ -16,7 +17,16 @@ function UserModal({ initial, roles, onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const manage = can('users:update');
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const v = useValidation([
+    { key: 'name', label: 'Name', required: true, format: 'name', maxLength: 80 },
+    !form.id && { key: 'email', label: 'Email', type: 'email', required: true },
+    !form.id && { key: 'password', label: 'Temporary password', required: true, minLength: 8, maxLength: 128 },
+    { key: 'phone', label: 'Phone', type: 'phone' },
+    { key: 'department', label: 'Department', maxLength: 80 },
+    { key: 'designation', label: 'Designation', maxLength: 80 },
+  ], form);
   const save = async () => {
+    if (!v.check()) return;
     setBusy(true);
     setError(null);
     try {
@@ -41,17 +51,17 @@ function UserModal({ initial, roles, onClose, onSaved }) {
     <Modal title={form.id ? form.name : 'New user'} onClose={onClose} footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" disabled={busy} onClick={save}>Save</button></>}>
       <ErrorAlert error={error} />
       <div className="form-grid">
-        <Field label="Name"><input className="input" value={form.name || ''} onChange={set('name')} /></Field>
-        {!form.id && <Field label="Email"><input className="input" type="email" value={form.email || ''} onChange={set('email')} /></Field>}
-        {!form.id && <Field label="Temporary password"><input className="input" type="password" autoComplete="new-password" value={form.password || ''} onChange={set('password')} /></Field>}
+        <Field label="Name" required error={v.errors.name}><input className="input" aria-invalid={Boolean(v.errors.name)} value={form.name || ''} onChange={set('name')} /></Field>
+        {!form.id && <Field label="Email" required error={v.errors.email}><input className="input" type="email" aria-invalid={Boolean(v.errors.email)} value={form.email || ''} onChange={set('email')} /></Field>}
+        {!form.id && <Field label="Temporary password" required error={v.errors.password} hint="At least 8 characters"><input className="input" type="password" autoComplete="new-password" aria-invalid={Boolean(v.errors.password)} value={form.password || ''} onChange={set('password')} /></Field>}
         <Field label="Role">
           <select className="input" value={form.role} disabled={!manage && Boolean(form.id)} onChange={set('role')}>
             {roles.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}
           </select>
         </Field>
-        <Field label="Department"><input className="input" value={form.department || ''} disabled={!manage && Boolean(form.id)} onChange={set('department')} /></Field>
-        <Field label="Designation"><input className="input" value={form.designation || ''} disabled={!manage && Boolean(form.id)} onChange={set('designation')} /></Field>
-        <Field label="Phone (for bridge calls)"><input className="input" value={form.phone || ''} onChange={set('phone')} /></Field>
+        <Field label="Department" error={v.errors.department}><input className="input" aria-invalid={Boolean(v.errors.department)} value={form.department || ''} disabled={!manage && Boolean(form.id)} onChange={set('department')} /></Field>
+        <Field label="Designation" error={v.errors.designation}><input className="input" aria-invalid={Boolean(v.errors.designation)} value={form.designation || ''} disabled={!manage && Boolean(form.id)} onChange={set('designation')} /></Field>
+        <Field label="Phone (for bridge calls)" error={v.errors.phone}><input className="input" type="tel" aria-invalid={Boolean(v.errors.phone)} value={form.phone || ''} onChange={set('phone')} /></Field>
         {form.id && manage && form.id !== me.id && <label className="checkbox"><input type="checkbox" checked={form.active !== false} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Active</label>}
       </div>
     </Modal>
@@ -120,7 +130,12 @@ function RoleModal({ initial, groups, onClose, onSaved }) {
   const [error, setError] = useState(null);
   const locked = form.key === 'admin';
   const toggle = (p) => setForm({ ...form, permissions: form.permissions.includes(p) ? form.permissions.filter((x) => x !== p) : [...form.permissions, p] });
+  const v = useValidation([
+    { key: 'name', label: 'Role name', required: true, format: 'name', maxLength: 60 },
+    { key: 'description', label: 'Description', maxLength: 200 },
+  ], form);
   const save = async () => {
+    if (!v.check()) return;
     setError(null);
     try {
       const body = { name: form.name, description: form.description, ...(locked ? {} : { permissions: form.permissions }) };
@@ -139,8 +154,8 @@ function RoleModal({ initial, groups, onClose, onSaved }) {
       <div className="stack">
         <ErrorAlert error={error} />
         <div className="form-grid">
-          <Field label="Name"><input className="input" value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="Description"><input className="input" value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          <Field label="Name" required error={v.errors.name}><input className="input" aria-invalid={Boolean(v.errors.name)} value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Description" error={v.errors.description}><input className="input" aria-invalid={Boolean(v.errors.description)} value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         </div>
         {locked ? <div className="alert alert-info">The Company Admin role always has full access.</div> : groups.map((g) => (
           <fieldset key={g.group} className="card" style={{ padding: 12 }}>

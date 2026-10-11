@@ -9,6 +9,7 @@ import { AuthShell } from '../components/AuthShell.jsx';
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '../lib/toast.js';
+import { FORMATS } from '../lib/validation.js';
 
 const STEPS = ['Company', 'Admin', 'Plan', 'Trial / payment', 'Done'];
 const INDUSTRIES = ['IT & Software', 'Retail', 'Manufacturing', 'Real Estate', 'Education', 'Healthcare', 'Finance', 'Services', 'Other'];
@@ -19,19 +20,20 @@ const EMPTY = {
   adminName: '', adminEmail: '', password: '', confirmPassword: '',
 };
 
-/** Client-side checks per step; the server validates everything again. */
+/** Client-side checks per step (shared rules in lib/validation.js); the server validates everything again. */
 function stepErrors(step, f) {
   const e = {};
   if (step === 0) {
     if (f.companyName.trim().length < 2) e.companyName = 'Company name is required';
-    if (!/^\S+@\S+\.\S+$/.test(f.email)) e.email = 'Enter a valid business email';
-    if (f.phone && !/^[+0-9 ()-]{6,20}$/.test(f.phone)) e.phone = 'Enter a valid phone number';
-    if (f.gstNumber && /^(in|india)$/i.test(f.country) && !GSTIN.test(f.gstNumber.toUpperCase())) e.gstNumber = 'Enter a valid 15-character GSTIN';
-    if (f.website && !/^https?:\/\/\S+\.\S+/.test(f.website)) e.website = 'Start with https://';
+    if (!FORMATS.email.test(f.email.trim())) e.email = 'Enter a valid business email, like you@company.com';
+    if (f.phone.trim() && !FORMATS.phone.test(f.phone.trim())) e.phone = FORMATS.phone.message;
+    if (f.gstNumber && /^(in|india)$/i.test(f.country) && !GSTIN.test(f.gstNumber.toUpperCase())) e.gstNumber = FORMATS.gstin.message;
+    if (f.website && !/^https?:\/\/\S+\.\S+/.test(f.website)) e.website = 'Start with https://, like https://www.company.com';
   }
   if (step === 1) {
     if (!f.adminName.trim()) e.adminName = 'Your name is required';
-    if (f.adminEmail && !/^\S+@\S+\.\S+$/.test(f.adminEmail)) e.adminEmail = 'Enter a valid email';
+    else if (!FORMATS.name.test(f.adminName)) e.adminName = FORMATS.name.message;
+    if (f.adminEmail.trim() && !FORMATS.email.test(f.adminEmail.trim())) e.adminEmail = 'Enter a valid email, like you@company.com';
     if (f.password.length < 8) e.password = 'At least 8 characters';
     if (f.password !== f.confirmPassword) e.confirmPassword = 'Passwords do not match';
   }
@@ -69,7 +71,7 @@ export function Register() {
   const field = (k, text, props = {}) => (
     <Field label={text} className={props.full ? 'full' : ''}>
       <input className="input" value={form[k]} onChange={set(k)} aria-invalid={Boolean(errors[k])} {...props} full={undefined} />
-      {errors[k] && <span className="small" style={{ color: 'var(--danger)' }}>{errors[k]}</span>}
+      {errors[k] && <small className="field-error" role="alert">{errors[k]}</small>}
     </Field>
   );
 

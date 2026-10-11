@@ -4,10 +4,15 @@ import {
 import { badRequest } from '../../lib/errors.js';
 import { normalizePhone } from '../../lib/phone.js';
 import { restoreFormula } from '../../lib/spreadsheet.js';
+import { FORMATS } from '../../lib/validation.js';
 
 export const MAX_IMPORT_ROWS = 10000;
 export const MAX_EXPORT_ROWS = 50000;
 export const IMPORT_MODES = ['skip', 'update', 'create'];
+
+// Offered as dropdowns in the Excel template (not enforced: companies may use their own words)
+export const LEAD_SOURCES = ['website', 'referral', 'inbound_call', 'campaign', 'social', 'event', 'cold', 'other'];
+const COMPANY_SIZES = ['1-10', '11-50', '51-200', '201-1000', '1000+'];
 
 const OPT_OUTS = [
   { key: 'doNotCall', header: 'Do Not Call', type: 'boolean' },
@@ -26,15 +31,15 @@ const CREATED = { key: 'createdAt', header: 'Created At', type: 'datetime', expo
 export const IO_SPECS = {
   leads: {
     fields: [
-      { key: 'name', header: 'Name', required: true, aliases: ['full name', 'lead name'] },
-      { key: 'email', header: 'Email', type: 'email' },
-      { key: 'phone', header: 'Phone', type: 'phone', aliases: ['mobile', 'phone number'] },
-      { key: 'company', header: 'Company' },
-      { key: 'source', header: 'Source', type: 'enum' },
-      { key: 'status', header: 'Status', type: 'enum', values: LEAD_STATUSES },
-      { key: 'industry', header: 'Industry' },
-      { key: 'companySize', header: 'Company Size' },
-      { key: 'estimatedValue', header: 'Estimated Value', type: 'number' },
+      { key: 'name', header: 'Name', required: true, aliases: ['full name', 'lead name'], example: 'Rahul Sharma' },
+      { key: 'email', header: 'Email', type: 'email', example: 'rahul@sharmatraders.in' },
+      { key: 'phone', header: 'Phone', type: 'phone', aliases: ['mobile', 'phone number'], example: '9876543210' },
+      { key: 'company', header: 'Company', example: 'Sharma Traders' },
+      { key: 'source', header: 'Source', type: 'enum', suggest: LEAD_SOURCES, example: 'website' },
+      { key: 'status', header: 'Status', type: 'enum', values: LEAD_STATUSES, example: 'new' },
+      { key: 'industry', header: 'Industry', example: 'Retail' },
+      { key: 'companySize', header: 'Company Size', suggest: COMPANY_SIZES, example: '11-50' },
+      { key: 'estimatedValue', header: 'Estimated Value', type: 'number', example: 50000 },
       ...OPT_OUTS,
       OWNER,
       { key: 'score', header: 'Score', type: 'number', exportOnly: true },
@@ -128,6 +133,42 @@ export function templateHeaders(spec) {
   return importableFields(spec).map((f) => f.header);
 }
 
+const TYPE_HINTS = {
+  email: 'Email address',
+  phone: '10-digit mobile, or with country code (+91…)',
+  number: 'Number only — no ₹ sign or text',
+  date: 'Date: YYYY-MM-DD or DD/MM/YYYY',
+  datetime: 'Date and time: YYYY-MM-DD HH:MM or DD/MM/YYYY HH:MM',
+  boolean: 'Yes or No',
+  user: "Team member's login email",
+  account: 'Account name (must already exist)',
+  contact: "Contact's email (must already exist)",
+};
+const TYPE_EXAMPLES = { boolean: 'No', date: '2026-11-30', datetime: '2026-11-30 10:30' };
+
+/**
+ * Describes each template column for the Excel guide: required or not, what to enter, allowed values
+ * (dropdowns) and an example. Owner/assignee columns list the company's active team emails.
+ */
+export async function templateGuide(spec, orgId) {
+  const fields = importableFields(spec);
+  const needsUsers = fields.some((f) => f.type === 'user');
+  const users = needsUsers ? await User.find({ organizationId: orgId, active: { $ne: false } }).select('email').sort({ email: 1 }).limit(200).lean() : [];
+  const emails = users.map((u) => u.email).filter(Boolean);
+  return fields.map((f) => {
+    const list = f.values || f.suggest || (f.type === 'boolean' ? ['Yes', 'No'] : f.type === 'user' ? emails : null);
+    return {
+      header: f.header,
+      required: Boolean(f.required),
+      hint: f.values ? `One of: ${f.values.join(', ')}` : f.suggest ? `Pick from the list or type your own (e.g. ${f.suggest.slice(0, 3).join(', ')})` : TYPE_HINTS[f.type] || 'Text',
+      list: list?.length ? list : null,
+      strict: Boolean(f.values || f.type === 'boolean'),
+      number: f.type === 'number',
+      example: f.example ?? (f.type === 'user' ? emails[0] : TYPE_EXAMPLES[f.type]) ?? '',
+    };
+  });
+}
+
 // ---------------------------------------------------------------- export
 
 const POPULATE = {
@@ -207,8 +248,11 @@ function parseCell(field, raw, ctx) {
       const s = String(v).toLowerCase();
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ? { value: s } : { error: `${field.header}: "${v}" is not a valid email` };
     }
-    case 'phone':
-      return { value: normalizePhone(String(v), ctx.countryCode) || String(v) };
+    case 'phone': {
+      const s = String(v);
+      if (!FORMATS.phone.test(s)) return { error: `${field.header}: "${v}" is not a valid phone number (10 digits, or with country code)` };
+      return { value: normalizePhone(s, ctx.countryCode) || s };
+    }
     case 'enum': {
       const s = String(v).trim().toLowerCase().replace(/[\s-]+/g, '_');
       if (field.values && !field.values.includes(s)) return { error: `${field.header}: "${v}" must be one of ${field.values.join(', ')}` };

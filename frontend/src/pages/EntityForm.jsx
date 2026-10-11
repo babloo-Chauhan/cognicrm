@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { get } from '../lib/api.js';
 import { label } from '../lib/format.js';
 import { Field } from '../components/ui.jsx';
-import { ENTITY_CONFIG } from './entities.js';
+import { ENTITY_CONFIG, validateEntity } from './entities.js';
 import { useTeam } from '../lib/team.js';
 
 /** Picks an active team member (lead owner, task assignee…). */
@@ -37,15 +37,26 @@ function toInput(field, value) {
   return value;
 }
 
-/** Create / edit form generated from the entity field config. */
-export function EntityForm({ entity, value, onChange }) {
+/**
+ * Create / edit form generated from the entity field config.
+ * A field shows its error once it has been left (blur), or for every field after a save attempt (`showErrors`).
+ */
+export function EntityForm({ entity, value, onChange, showErrors = false }) {
   const cfg = ENTITY_CONFIG[entity];
+  const [touched, setTouched] = useState({});
   const set = (key, v) => onChange({ ...value, [key]: v });
+  const errors = validateEntity(entity, value);
   return (
     <div className="form-grid">
       {cfg.fields.map((f) => {
         const v = value[f.key];
-        const common = { className: 'input', required: f.required };
+        const error = (showErrors || touched[f.key]) ? errors[f.key] : null;
+        const common = {
+          className: 'input',
+          required: f.required,
+          'aria-invalid': error ? true : undefined,
+          onBlur: () => setTouched((t) => (t[f.key] ? t : { ...t, [f.key]: true })),
+        };
         let input;
         if (f.type === 'select') {
           input = (
@@ -77,7 +88,7 @@ export function EntityForm({ entity, value, onChange }) {
             />
           );
         }
-        return <Field key={f.key} label={f.label} className={f.type === 'textarea' ? 'full' : ''}>{input}</Field>;
+        return <Field key={f.key} label={f.label} required={f.required} error={error} className={f.type === 'textarea' ? 'full' : ''}>{input}</Field>;
       })}
     </div>
   );

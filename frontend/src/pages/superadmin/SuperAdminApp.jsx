@@ -23,6 +23,7 @@ import {
   ConfirmDialog, DataTable, ErrorAlert, Field, Modal, Pagination, Skeleton, Stat, StatusBadge, Tabs, UsageBar,
 } from '../../components/ui.jsx';
 import { toast } from '../../lib/toast.js';
+import { useValidation } from '../../lib/useValidation.js';
 
 const NAV = [
   { group: 'Overview', items: [['', 'Dashboard', LayoutDashboard]] },
@@ -159,7 +160,15 @@ function CreateCompanyModal({ plans, onClose, onCreated }) {
   const [form, setForm] = useState({ companyName: '', email: '', adminName: '', adminEmail: '', password: '', planCode: 'PROFESSIONAL', trial: true });
   const [error, setError] = useState(null);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const v = useValidation([
+    { key: 'companyName', label: 'Company name', required: true, minLength: 2, maxLength: 150 },
+    { key: 'email', label: 'Business email', type: 'email', required: true },
+    { key: 'adminName', label: 'Admin name', required: true, format: 'name', maxLength: 80 },
+    { key: 'adminEmail', label: 'Admin email', type: 'email' },
+    { key: 'password', label: 'Admin password', required: true, minLength: 8, maxLength: 128 },
+  ], form);
   const save = async () => {
+    if (!v.check()) return;
     setError(null);
     try {
       const res = await ppost('/companies', form);
@@ -171,11 +180,11 @@ function CreateCompanyModal({ plans, onClose, onCreated }) {
     <Modal title="Create company" onClose={onClose} footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Create</button></>}>
       <ErrorAlert error={error} />
       <div className="form-grid">
-        <Field label="Company name"><input className="input" value={form.companyName} onChange={set('companyName')} /></Field>
-        <Field label="Business email"><input className="input" type="email" value={form.email} onChange={set('email')} /></Field>
-        <Field label="Admin name"><input className="input" value={form.adminName} onChange={set('adminName')} /></Field>
-        <Field label="Admin email"><input className="input" type="email" value={form.adminEmail} onChange={set('adminEmail')} /></Field>
-        <Field label="Admin password"><input className="input" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} /></Field>
+        <Field label="Company name" required error={v.errors.companyName}><input className="input" aria-invalid={Boolean(v.errors.companyName)} value={form.companyName} onChange={set('companyName')} /></Field>
+        <Field label="Business email" required error={v.errors.email}><input className="input" aria-invalid={Boolean(v.errors.email)} type="email" value={form.email} onChange={set('email')} /></Field>
+        <Field label="Admin name" required error={v.errors.adminName}><input className="input" aria-invalid={Boolean(v.errors.adminName)} value={form.adminName} onChange={set('adminName')} /></Field>
+        <Field label="Admin email" error={v.errors.adminEmail}><input className="input" aria-invalid={Boolean(v.errors.adminEmail)} type="email" value={form.adminEmail} onChange={set('adminEmail')} /></Field>
+        <Field label="Admin password" required error={v.errors.password}><input className="input" aria-invalid={Boolean(v.errors.password)} type="password" autoComplete="new-password" value={form.password} onChange={set('password')} /></Field>
         <Field label="Plan">
           <select className="input" value={form.planCode} onChange={set('planCode')}>{plans.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</select>
         </Field>
@@ -376,7 +385,16 @@ function PlanModal({ initial, modules, onClose, onSaved }) {
   const [error, setError] = useState(null);
   const all = form.modules.includes('*');
   const toggle = (m) => setForm({ ...form, modules: form.modules.includes(m) ? form.modules.filter((x) => x !== m) : [...form.modules, m] });
+  const v = useValidation([
+    !initial.id && { key: 'code', label: 'Code', required: true, maxLength: 30 },
+    { key: 'name', label: 'Name', required: true, maxLength: 60 },
+    { key: 'description', label: 'Description', maxLength: 300 },
+    { key: 'priceMonthly', label: 'Monthly price', type: 'number', money: true },
+    { key: 'priceYearly', label: 'Yearly price', type: 'number', money: true },
+    { key: 'sortOrder', label: 'Sort order', type: 'number', integer: true },
+  ], form);
   const save = async () => {
+    if (!v.check()) return;
     setError(null);
     try {
       const body = {
@@ -395,12 +413,12 @@ function PlanModal({ initial, modules, onClose, onSaved }) {
       <div className="stack">
         <ErrorAlert error={error} />
         <div className="form-grid">
-          {!initial.id && <Field label="Code"><input className="input mono" value={form.code || ''} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} /></Field>}
-          <Field label="Name"><input className="input" value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="Description" className="full"><input className="input" value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-          <Field label="Price / month (₹)"><input className="input" type="number" min="0" value={form.priceMonthly} onChange={(e) => setForm({ ...form, priceMonthly: e.target.value })} /></Field>
-          <Field label="Price / year (₹)"><input className="input" type="number" min="0" value={form.priceYearly} onChange={(e) => setForm({ ...form, priceYearly: e.target.value })} /></Field>
-          <Field label="Sort order"><input className="input" type="number" value={form.sortOrder || 0} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} /></Field>
+          {!initial.id && <Field label="Code" required error={v.errors.code}><input className="input mono" aria-invalid={Boolean(v.errors.code)} value={form.code || ''} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} /></Field>}
+          <Field label="Name" required error={v.errors.name}><input className="input" aria-invalid={Boolean(v.errors.name)} value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Description" className="full" error={v.errors.description}><input className="input" aria-invalid={Boolean(v.errors.description)} value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          <Field label="Price / month (₹)" error={v.errors.priceMonthly}><input className="input" aria-invalid={Boolean(v.errors.priceMonthly)} type="number" min="0" value={form.priceMonthly} onChange={(e) => setForm({ ...form, priceMonthly: e.target.value })} /></Field>
+          <Field label="Price / year (₹)" error={v.errors.priceYearly}><input className="input" aria-invalid={Boolean(v.errors.priceYearly)} type="number" min="0" value={form.priceYearly} onChange={(e) => setForm({ ...form, priceYearly: e.target.value })} /></Field>
+          <Field label="Sort order" error={v.errors.sortOrder}><input className="input" aria-invalid={Boolean(v.errors.sortOrder)} type="number" value={form.sortOrder || 0} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} /></Field>
           <div className="row"><label className="checkbox"><input type="checkbox" checked={Boolean(form.isCustom)} onChange={(e) => setForm({ ...form, isCustom: e.target.checked })} /> Custom pricing</label>
             <label className="checkbox"><input type="checkbox" checked={form.isPublic !== false} onChange={(e) => setForm({ ...form, isPublic: e.target.checked })} /> Public</label>
             <label className="checkbox"><input type="checkbox" checked={form.active !== false} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Active</label></div>
@@ -459,7 +477,17 @@ function Coupons() {
   const list = useAsync(() => pget('/coupons'), []);
   const [form, setForm] = useState(null);
   const [error, setError] = useState(null);
+  const v = useValidation([
+    { key: 'code', label: 'Code', required: true, maxLength: 30 },
+    { key: 'percentOff', label: '% off', type: 'number', min: 1, max: 100 },
+    { key: 'amountOff', label: '₹ off', type: 'number', min: 1 },
+    { key: 'maxRedemptions', label: 'Max redemptions', type: 'number', integer: true, min: 1 },
+  ], form);
+  const cErrors = { ...v.errors };
+  if (form && Object.keys(v.errors).length === 0 && !form.percentOff === !form.amountOff) cErrors.percentOff = 'Give either a % off or a ₹ off amount';
   const save = async () => {
+    const ok = v.check();
+    if (!ok || !form.percentOff === !form.amountOff) return;
     setError(null);
     try {
       await ppost('/coupons', {
@@ -484,11 +512,11 @@ function Coupons() {
         <Modal title="New coupon" onClose={() => setForm(null)} footer={<><button type="button" className="btn" onClick={() => setForm(null)}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Create</button></>}>
           <ErrorAlert error={error} />
           <div className="form-grid">
-            <Field label="Code"><input className="input mono" value={form.code || ''} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} /></Field>
-            <Field label="% off"><input className="input" type="number" min="0" max="100" value={form.percentOff || ''} onChange={(e) => setForm({ ...form, percentOff: e.target.value })} /></Field>
-            <Field label="₹ off"><input className="input" type="number" min="0" value={form.amountOff || ''} onChange={(e) => setForm({ ...form, amountOff: e.target.value })} /></Field>
+            <Field label="Code" required error={cErrors.code}><input className="input mono" aria-invalid={Boolean(cErrors.code)} value={form.code || ''} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} /></Field>
+            <Field label="% off" error={cErrors.percentOff}><input className="input" aria-invalid={Boolean(cErrors.percentOff)} type="number" min="0" max="100" value={form.percentOff || ''} onChange={(e) => setForm({ ...form, percentOff: e.target.value })} /></Field>
+            <Field label="₹ off" error={cErrors.amountOff}><input className="input" aria-invalid={Boolean(cErrors.amountOff)} type="number" min="0" value={form.amountOff || ''} onChange={(e) => setForm({ ...form, amountOff: e.target.value })} /></Field>
             <Field label="Valid until"><input className="input" type="date" value={form.validUntil || ''} onChange={(e) => setForm({ ...form, validUntil: e.target.value })} /></Field>
-            <Field label="Max redemptions"><input className="input" type="number" min="1" value={form.maxRedemptions || ''} onChange={(e) => setForm({ ...form, maxRedemptions: e.target.value })} /></Field>
+            <Field label="Max redemptions" error={cErrors.maxRedemptions}><input className="input" aria-invalid={Boolean(cErrors.maxRedemptions)} type="number" min="1" value={form.maxRedemptions || ''} onChange={(e) => setForm({ ...form, maxRedemptions: e.target.value })} /></Field>
           </div>
         </Modal>
       )}
@@ -530,7 +558,12 @@ function System() {
   const [form, setForm] = useState(null);
   const [error, setError] = useState(null);
   const s = form || settings.data;
+  const v = useValidation([
+    { key: 'trialDays', label: 'Trial days', type: 'number', integer: true, min: 0, max: 365 },
+    { key: 'gracePeriodDays', label: 'Grace period', type: 'number', integer: true, min: 0, max: 90 },
+  ], s);
   const save = async () => {
+    if (!v.check()) return;
     setError(null);
     try {
       const { trialEnabled, trialDays, trialPlanCode, defaultPlanCode, requireApproval, gracePeriodDays } = s;
@@ -560,8 +593,8 @@ function System() {
             <div className="form-grid">
               <label className="checkbox"><input type="checkbox" checked={s.trialEnabled} onChange={(e) => setForm({ ...s, trialEnabled: e.target.checked })} /> Trials enabled</label>
               <label className="checkbox"><input type="checkbox" checked={s.requireApproval} onChange={(e) => setForm({ ...s, requireApproval: e.target.checked })} /> New companies need approval</label>
-              <Field label="Trial days"><input className="input" type="number" min="0" value={s.trialDays} onChange={(e) => setForm({ ...s, trialDays: e.target.value })} /></Field>
-              <Field label="Grace period (days)"><input className="input" type="number" min="0" value={s.gracePeriodDays} onChange={(e) => setForm({ ...s, gracePeriodDays: e.target.value })} /></Field>
+              <Field label="Trial days" error={v.errors.trialDays}><input className="input" aria-invalid={Boolean(v.errors.trialDays)} type="number" min="0" value={s.trialDays} onChange={(e) => setForm({ ...s, trialDays: e.target.value })} /></Field>
+              <Field label="Grace period (days)" error={v.errors.gracePeriodDays}><input className="input" aria-invalid={Boolean(v.errors.gracePeriodDays)} type="number" min="0" value={s.gracePeriodDays} onChange={(e) => setForm({ ...s, gracePeriodDays: e.target.value })} /></Field>
               <Field label="Trial plan"><select className="input" value={s.trialPlanCode} onChange={(e) => setForm({ ...s, trialPlanCode: e.target.value })}>{plans.data?.items.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</select></Field>
               <Field label="Fallback plan (after expiry)"><select className="input" value={s.defaultPlanCode} onChange={(e) => setForm({ ...s, defaultPlanCode: e.target.value })}>{plans.data?.items.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</select></Field>
             </div>

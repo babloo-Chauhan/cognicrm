@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { patch, post, setToken } from '../lib/api.js';
 import { ErrorAlert, Field, Modal } from './ui.jsx';
 import { toast } from '../lib/toast.js';
+import { useValidation } from '../lib/useValidation.js';
 
 /** Readable temporary password: no 0/O/1/l look-alikes. */
 function tempPassword() {
@@ -43,9 +44,9 @@ export function ResetPasswordDialog({ user, onClose }) {
     >
       <ErrorAlert error={error} />
       <div className="stack">
-        <Field label="New password" hint="At least 8 characters. A random one is filled in for you.">
+        <Field label="New password" hint="At least 8 characters. A random one is filled in for you." error={!done && password.length < 8 ? 'Password must be at least 8 characters' : null}>
           <div className="row" style={{ flexWrap: 'nowrap' }}>
-            <input className="input mono" value={password} readOnly={done} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+            <input className="input mono" aria-invalid={!done && password.length < 8} value={password} readOnly={done} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
             {!done && <button type="button" className="btn btn-sm" onClick={() => setPassword(tempPassword())}>Generate</button>}
           </div>
         </Field>
@@ -60,8 +61,18 @@ export function ChangePasswordDialog({ onClose }) {
   const [form, setForm] = useState({ current: '', next: '', confirm: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const mismatch = form.confirm && form.next !== form.confirm;
+  const v = useValidation([
+    { key: 'current', label: 'Current password', required: true, maxLength: 128 },
+    { key: 'next', label: 'New password', required: true, minLength: 8, maxLength: 128 },
+    { key: 'confirm', label: 'Confirm new password', required: true, maxLength: 128 },
+  ], form);
+  // Cross-field checks the shared rules don't cover
+  const errors = { ...v.errors };
+  if (!errors.confirm && form.confirm && form.next !== form.confirm) errors.confirm = 'New passwords do not match';
+  if (!errors.next && form.next && form.next === form.current) errors.next = 'Choose a password different from the current one';
   const save = async () => {
+    const ok = v.check();
+    if (!ok || form.next !== form.confirm || form.next === form.current) return;
     setBusy(true);
     setError(null);
     try {
@@ -80,13 +91,13 @@ export function ChangePasswordDialog({ onClose }) {
     <Modal
       title="Change password"
       onClose={onClose}
-      footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" disabled={busy || !form.current || form.next.length < 8 || form.next !== form.confirm} onClick={save}>{busy ? 'Changing…' : 'Change password'}</button></>}
+      footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Changing…' : 'Change password'}</button></>}
     >
-      <ErrorAlert error={error || (mismatch ? new Error('New passwords do not match') : null)} />
+      <ErrorAlert error={error} />
       <div className="stack">
-        <Field label="Current password"><input className="input" type="password" autoComplete="current-password" value={form.current} onChange={set('current')} /></Field>
-        <Field label="New password" hint="At least 8 characters"><input className="input" type="password" autoComplete="new-password" value={form.next} onChange={set('next')} /></Field>
-        <Field label="Confirm new password"><input className="input" type="password" autoComplete="new-password" value={form.confirm} onChange={set('confirm')} /></Field>
+        <Field label="Current password" error={errors.current}><input className="input" type="password" autoComplete="current-password" aria-invalid={Boolean(errors.current)} value={form.current} onChange={set('current')} /></Field>
+        <Field label="New password" hint="At least 8 characters" error={errors.next}><input className="input" type="password" autoComplete="new-password" aria-invalid={Boolean(errors.next)} value={form.next} onChange={set('next')} /></Field>
+        <Field label="Confirm new password" error={errors.confirm}><input className="input" type="password" autoComplete="new-password" aria-invalid={Boolean(errors.confirm)} value={form.confirm} onChange={set('confirm')} /></Field>
       </div>
     </Modal>
   );

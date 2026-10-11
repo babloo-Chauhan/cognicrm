@@ -3,6 +3,7 @@ import { get, post, put } from '../../lib/api.js';
 import { useAuth } from '../../lib/auth.jsx';
 import { DataTable, ErrorAlert, Field, Modal, StatusBadge } from '../../components/ui.jsx';
 import { useAsync } from '../../lib/hooks.js';
+import { validateForm } from '../../lib/validation.js';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -14,7 +15,17 @@ function HoursEditor({ initial, onClose, onSaved }) {
   const rangeFor = (day) => bh.weekly.find((w) => w.day === day);
   const toggleDay = (day, on) => setBh({ ...bh, weekly: on ? [...bh.weekly, { day, open: '09:00', close: '18:00' }] : bh.weekly.filter((w) => w.day !== day) });
   const setRange = (day, k, v) => setBh({ ...bh, weekly: bh.weekly.map((w) => (w.day === day ? { ...w, [k]: v } : w)) });
+  const [shown, setShown] = useState(false);
+  const problems = validateForm([
+    { key: 'name', label: 'Name', required: true, maxLength: 80 },
+    { key: 'timezone', label: 'Time zone', required: true, maxLength: 60 },
+  ], bh);
+  const badDay = bh.weekly.find((w) => w.open && w.close && w.open >= w.close);
+  if (badDay) problems.weekly = `${DAYS[badDay.day]}: closing time must be after opening time`;
+  const err = shown ? problems : {};
   const save = async () => {
+    setShown(Object.keys(problems).length > 0);
+    if (Object.keys(problems).length) return;
     setError(null);
     const body = { name: bh.name, timezone: bh.timezone, weekly: bh.weekly, holidays: bh.holidays, specialHours: bh.specialHours };
     try {
@@ -28,10 +39,11 @@ function HoursEditor({ initial, onClose, onSaved }) {
   return (
     <Modal title={bh.id ? bh.name : 'New schedule'} size="lg" onClose={onClose} footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Save</button></>}>
       <ErrorAlert error={error} />
+      {err.weekly && <div className="field-error" role="alert">{err.weekly}</div>}
       <div className="stack">
         <div className="form-grid">
-          <Field label="Name"><input className="input" value={bh.name} onChange={(e) => setBh({ ...bh, name: e.target.value })} /></Field>
-          <Field label="Time zone"><input className="input" value={bh.timezone} onChange={(e) => setBh({ ...bh, timezone: e.target.value })} placeholder="Asia/Kolkata" /></Field>
+          <Field label="Name" required error={err.name}><input className="input" aria-invalid={Boolean(err.name)} value={bh.name} onChange={(e) => setBh({ ...bh, name: e.target.value })} /></Field>
+          <Field label="Time zone" required error={err.timezone}><input className="input" aria-invalid={Boolean(err.timezone)} value={bh.timezone} onChange={(e) => setBh({ ...bh, timezone: e.target.value })} placeholder="Asia/Kolkata" /></Field>
         </div>
         <table className="table">
           <tbody>

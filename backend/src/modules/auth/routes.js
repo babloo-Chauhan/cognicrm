@@ -9,6 +9,7 @@ import { validate } from '../../middleware/common.js';
 import { AppError, badRequest, unauthorized } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
 import { log } from '../../lib/logger.js';
+import { FORMATS } from '../../lib/validation.js';
 import { fcmConfigured } from '../../lib/fcm.js';
 import { getTenantContext, invalidateTenant, permissionsFor } from '../saas/tenant.js';
 import { createCompany } from '../saas/provisioning.js';
@@ -53,7 +54,7 @@ const registerSchema = z.object({
   organizationName: z.string().trim().min(2).max(120).optional(), // legacy field name
   legalName: optional(z.string().trim().max(160)),
   email: z.string().trim().email(), // business email (also the admin login unless adminEmail is given)
-  phone: optional(z.string().trim().regex(/^[+0-9 ()-]{6,20}$/, 'Invalid phone number')),
+  phone: optional(z.string().trim().refine((v) => FORMATS.phone.test(v), FORMATS.phone.message)),
   country: optional(z.string().trim().max(60)),
   state: optional(z.string().trim().max(60)),
   city: optional(z.string().trim().max(60)),
@@ -225,7 +226,7 @@ const profileSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   legalName: z.string().trim().max(160).optional(),
   email: z.string().trim().email().optional().or(z.literal('')),
-  phone: z.string().trim().max(20).optional(),
+  phone: z.string().trim().max(20).refine((v) => !v || FORMATS.phone.test(v), FORMATS.phone.message).optional(),
   address: z.object({ line1: z.string().max(300).optional(), city: z.string().max(60).optional(), state: z.string().max(60).optional(), country: z.string().max(60).optional(), postalCode: z.string().max(12).optional() }).optional(),
   taxId: z.string().trim().toUpperCase().max(20).optional(),
   website: z.string().trim().url().optional().or(z.literal('')),

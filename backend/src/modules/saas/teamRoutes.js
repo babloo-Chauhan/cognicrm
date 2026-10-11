@@ -13,6 +13,7 @@ import { publicUser } from '../auth/routes.js';
 import { invalidateTenant, permissionsFor } from './tenant.js';
 import { checkLimit } from './usage.js';
 import { nextUserCode } from './provisioning.js';
+import { FORMATS } from '../../lib/validation.js';
 
 const router = Router();
 const objectId = z.string().regex(/^[a-f0-9]{24}$/i, 'Invalid id');
@@ -39,7 +40,7 @@ const userSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(8).max(128),
   role: z.string().trim().min(1).default('agent'),
-  phone: z.string().trim().max(20).optional(),
+  phone: z.string().trim().max(20).refine((v) => !v || FORMATS.phone.test(v), FORMATS.phone.message).optional(),
   extension: z.string().max(10).optional(),
   department: z.string().trim().max(60).optional(),
   designation: z.string().trim().max(60).optional(),

@@ -7,6 +7,7 @@ import {
   ConfirmDialog, ErrorAlert, Field, Modal, Skeleton,
 } from '../components/ui.jsx';
 import { toast } from '../lib/toast.js';
+import { validateField } from '../lib/validation.js';
 
 function PipelineModal({ initial, onClose, onSaved }) {
   const [name, setName] = useState(initial.name || '');
@@ -14,6 +15,17 @@ function PipelineModal({ initial, onClose, onSaved }) {
   // Won/Lost are always appended by the server, so the editor shows only the working stages
   const [stages, setStages] = useState((initial.stages || [{ label: 'New' }, { label: 'Qualified' }, { label: 'Proposal' }]).filter((s) => !['won', 'lost'].includes(s.key)));
   const [error, setError] = useState(null);
+  const [showErrors, setShowErrors] = useState(false);
+  // Pipeline name, stage names (required, unique, not Won/Lost) and win probability 0–100
+  const nameError = validateField({ label: 'Pipeline name', required: true, maxLength: 60 }, name);
+  const stageErrors = stages.map((s, i) => {
+    const label = String(s.label || '').trim().toLowerCase();
+    return validateField({ label: `Stage ${i + 1} name`, required: true, maxLength: 40 }, s.label)
+      || (['won', 'lost'].includes(label) ? 'Won and Lost are added automatically' : null)
+      || (label && stages.findIndex((x) => String(x.label || '').trim().toLowerCase() === label) !== i ? 'Stage names must be different' : null)
+      || validateField({ label: 'Win probability', type: 'number', min: 0, max: 100 }, s.probability);
+  });
+  const invalid = Boolean(nameError) || stageErrors.some(Boolean);
   const update = (i, k, v) => setStages(stages.map((s, j) => (j === i ? { ...s, [k]: v } : s)));
   const move = (i, d) => {
     const next = [...stages];
@@ -22,6 +34,8 @@ function PipelineModal({ initial, onClose, onSaved }) {
   };
   const save = async () => {
     setError(null);
+    setShowErrors(invalid);
+    if (invalid) return;
     try {
       const body = { name, isDefault, stages: stages.map((s) => ({ key: s.key, label: s.label, probability: Number(s.probability) || 0 })) };
       if (initial.id) await patch(`/pipelines/${initial.id}`, body);
@@ -37,18 +51,21 @@ function PipelineModal({ initial, onClose, onSaved }) {
       <div className="stack">
         <ErrorAlert error={error} />
         <div className="form-grid">
-          <Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field label="Name" required error={showErrors ? nameError : null}><input className="input" aria-invalid={showErrors && Boolean(nameError)} value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <label className="checkbox"><input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> Default pipeline for new deals</label>
         </div>
         <h3>Stages</h3>
         {stages.map((s, i) => (
-          <div key={s.key || i} className="row">
+          <div key={s.key || i} className="stack" style={{ gap: 4 }}>
+          <div className="row">
             <span className="muted mono" style={{ width: 22 }}>{i + 1}</span>
-            <input className="input" style={{ flex: 1, minWidth: 140 }} value={s.label} onChange={(e) => update(i, 'label', e.target.value)} aria-label={`Stage ${i + 1} name`} />
+            <input className="input" style={{ flex: 1, minWidth: 140 }} aria-invalid={showErrors && Boolean(stageErrors[i])} value={s.label} onChange={(e) => update(i, 'label', e.target.value)} aria-label={`Stage ${i + 1} name`} />
             <input className="input" style={{ width: 90 }} type="number" min="0" max="100" value={s.probability ?? 0} onChange={(e) => update(i, 'probability', e.target.value)} aria-label="Win probability %" title="Win probability %" />
             <button type="button" className="btn btn-sm btn-ghost" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Move up">↑</button>
             <button type="button" className="btn btn-sm btn-ghost" disabled={i === stages.length - 1} onClick={() => move(i, 1)} aria-label="Move down">↓</button>
             <button type="button" className="btn btn-sm btn-ghost" disabled={stages.length <= 1} onClick={() => setStages(stages.filter((_, j) => j !== i))} aria-label="Remove stage">✕</button>
+          </div>
+          {showErrors && stageErrors[i] && <small className="field-error" role="alert" style={{ marginLeft: 30 }}>{stageErrors[i]}</small>}
           </div>
         ))}
         <button type="button" className="btn btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setStages([...stages, { label: '', probability: 50 }])}>+ Add stage</button>

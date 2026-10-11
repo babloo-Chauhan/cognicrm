@@ -9,6 +9,7 @@ import { normalizePhone } from '../../lib/phone.js';
 import { AppError, badRequest, notFound } from '../../lib/errors.js';
 import { crudRouter } from './crud.js';
 import { IO_SPECS } from './importExport.js';
+import { FIELD_RULES } from './fieldRules.js';
 import { getCustomerContext } from './lookup.js';
 import { getTimeline, logActivity } from '../timeline/service.js';
 import { scoreDeal, scoreLead } from '../ai/insights.js';
@@ -33,6 +34,7 @@ async function normalizePhoneField(doc, req) {
 }
 
 router.use('/contacts', crudRouter(Contact, {
+  rules: FIELD_RULES.contacts,
   resource: 'contacts',
   limit: 'customers',
   io: IO_SPECS.contacts,
@@ -48,6 +50,7 @@ router.use('/contacts', crudRouter(Contact, {
 }));
 
 router.use('/accounts', crudRouter(Account, {
+  rules: FIELD_RULES.accounts,
   resource: 'accounts',
   limit: 'customers',
   io: IO_SPECS.accounts,
@@ -122,6 +125,7 @@ router.post('/leads/:id/score', requirePermission('leads:update'), async (req, r
 });
 
 router.use('/leads', crudRouter(Lead, {
+  rules: FIELD_RULES.leads,
   resource: 'leads',
   limit: 'leads',
   io: IO_SPECS.leads,
@@ -154,6 +158,7 @@ router.post('/deals/:id/score', requirePermission('deals:update'), async (req, r
 });
 
 router.use('/deals', crudRouter(Deal, {
+  rules: FIELD_RULES.deals,
   resource: 'deals',
   limit: 'deals',
   io: IO_SPECS.deals,
@@ -178,6 +183,7 @@ router.use('/deals', crudRouter(Deal, {
 }));
 
 router.use('/tickets', crudRouter(Ticket, {
+  rules: FIELD_RULES.tickets,
   resource: 'tickets',
   io: IO_SPECS.tickets,
   searchFields: ['subject', 'description'],
@@ -189,6 +195,7 @@ router.use('/tickets', crudRouter(Ticket, {
 }));
 
 router.use('/tasks', crudRouter(Task, {
+  rules: FIELD_RULES.tasks,
   resource: 'tasks',
   io: IO_SPECS.tasks,
   searchFields: ['title', 'description'],
@@ -212,6 +219,7 @@ router.use('/notes', crudRouter(Note, {
 }));
 
 router.use('/appointments', crudRouter(Appointment, {
+  rules: FIELD_RULES.appointments,
   resource: 'appointments',
   searchFields: ['title'],
   filterFields: ['userId', 'status'],
@@ -222,6 +230,7 @@ router.use('/appointments', crudRouter(Appointment, {
 }));
 
 router.use('/orders', crudRouter(Order, {
+  rules: FIELD_RULES.orders,
   resource: 'orders', searchFields: ['orderNumber'], filterFields: ['status', 'contactId'] }));
 
 router.get('/timeline/:entityType/:id', requirePermission('crm:read'), async (req, res) => {

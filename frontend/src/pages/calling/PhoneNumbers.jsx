@@ -3,6 +3,7 @@ import { get, patch, post } from '../../lib/api.js';
 import { useAuth } from '../../lib/auth.jsx';
 import { label } from '../../lib/format.js';
 import { DataTable, ErrorAlert, Field, Modal, StatusBadge } from '../../components/ui.jsx';
+import { useValidation } from '../../lib/useValidation.js';
 import { useAsync } from '../../lib/hooks.js';
 import { useCalls } from '../../calling/CallContext.jsx';
 
@@ -18,7 +19,12 @@ function NumberEditor({ initial, onClose, onSaved }) {
   const teams = useAsync(() => get('/departments'), []);
   const { capabilities } = useCalls();
   const set = (k, v) => setN({ ...n, [k]: v === '' ? null : v });
+  const v = useValidation([
+    !n.id && { key: 'number', label: 'Number', required: true, format: 'e164' },
+    { key: 'label', label: 'Label', maxLength: 60 },
+  ], n);
   const save = async () => {
+    if (!v.check()) return;
     setError(null);
     try {
       if (n.id) await patch(`/phone-numbers/${n.id}`, Object.fromEntries(ROUTING_FIELDS.filter((k) => n[k] !== undefined).map((k) => [k, n[k]])));
@@ -38,9 +44,9 @@ function NumberEditor({ initial, onClose, onSaved }) {
     <Modal title={n.id ? n.number : 'Add phone number'} size="lg" onClose={onClose} footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Save</button></>}>
       <ErrorAlert error={error} />
       <div className="form-grid">
-        {!n.id && <Field label="Number (E.164)"><input className="input" value={n.number || ''} onChange={(e) => set('number', e.target.value)} placeholder="+9180…" /></Field>}
+        {!n.id && <Field label="Number (E.164)" required error={v.errors.number}><input className="input" type="tel" aria-invalid={Boolean(v.errors.number)} value={n.number || ''} onChange={(e) => set('number', e.target.value)} placeholder="+9180…" /></Field>}
         {!n.id && <Field label="Provider"><input className="input" value={n.provider || capabilities?.provider || ''} onChange={(e) => set('provider', e.target.value)} /></Field>}
-        <Field label="Label"><input className="input" value={n.label || ''} onChange={(e) => set('label', e.target.value)} /></Field>
+        <Field label="Label" error={v.errors.label}><input className="input" aria-invalid={Boolean(v.errors.label)} value={n.label || ''} onChange={(e) => set('label', e.target.value)} /></Field>
         <Field label="Status"><select className="input" value={n.status || 'active'} onChange={(e) => set('status', e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
         <Field label="Assigned user">{select('assignedUserId', users.data?.items)}</Field>
         <Field label="Assigned team">{select('assignedTeamId', teams.data?.items)}</Field>

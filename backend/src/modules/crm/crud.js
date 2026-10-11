@@ -1,11 +1,12 @@
 import express, { Router } from 'express';
 import { badRequest, notFound } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
-import { readTable, sendTable } from '../../lib/spreadsheet.js';
+import { validateField } from '../../lib/validation.js';
+import { buildTemplateWorkbook, readTable, sendTable } from '../../lib/spreadsheet.js';
 import { requirePermission, requireResource } from '../../middleware/auth.js';
 import { checkLimit, remaining } from '../saas/usage.js';
 import { logActivity } from '../timeline/service.js';
-import { buildExport, importRows, templateHeaders } from './importExport.js';
+import { buildExport, importRows, templateGuide, templateHeaders } from './importExport.js';
 
 const PROTECTED_FIELDS = ['_id', 'id', 'organizationId', 'createdAt', 'updatedAt'];
 
@@ -30,6 +31,19 @@ function listFilter(req, searchFields, filterFields) {
   return filter;
 }
 
+/**
+ * Applies form rules to a request body. A create checks every rule (required fields too);
+ * an update only checks the fields it sends, so a partial PATCH stays valid.
+ */
+function checkRules(rules, body, partial) {
+  if (!rules) return;
+  const problems = rules
+    .filter((r) => !partial || Object.prototype.hasOwnProperty.call(body, r.key))
+    .map((r) => ({ path: [r.key], message: validateField(r, body[r.key]) }))
+    .filter((p) => p.message);
+  if (problems.length) throw badRequest(problems[0].message, problems);
+}
+
 const fileFormat = (req) => (req.query.format === 'xlsx' ? 'xlsx' : 'csv');
 
 /**
@@ -49,6 +63,7 @@ export function crudRouter(Model, {
   io,
   resource, // permission prefix: GET → `${resource}:read`, POST → create, PATCH → update, DELETE → delete
   limit, // plan limit key checked before creating (users, customers, leads, deals)
+  rules, // form rules (fieldRules.js) checked on create and update
 } = {}) {
   const router = Router();
   const name = `${Model.collection.collectionName}`;
@@ -62,7 +77,14 @@ export function crudRouter(Model, {
     });
 
     router.get('/import/template', requirePermission('crm:import'), async (req, res) => {
-      await sendTable(res, { headers: templateHeaders(io), rows: [], name: `${name}-import-template`, format: fileFormat(req) });
+      const file = `${name}-import-template`;
+      if (fileFormat(req) !== 'xlsx') return sendTable(res, { headers: templateHeaders(io), rows: [], name: file, format: 'csv' });
+      // Excel: dropdowns, highlighted required columns and an Instructions sheet
+      const wb = buildTemplateWorkbook({ sheet: name.charAt(0).toUpperCase() + name.slice(1), columns: await templateGuide(io, req.orgId) });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${file}.xlsx"`);
+      await wb.xlsx.write(res);
+      return res.end();
     });
 
     // The file is the raw request body (text/csv or the .xlsx bytes); options come from the query string
@@ -108,6 +130,7 @@ export function crudRouter(Model, {
   });
 
   router.post('/', async (req, res) => {
+    checkRules(rules, req.body || {}, false);
     if (limit) await checkLimit(req.orgId, limit);
     const data = { ...clean(req.body), organizationId: req.orgId };
     const doc = new Model(data);
@@ -126,6 +149,7 @@ export function crudRouter(Model, {
   router.patch('/:id', async (req, res) => {
     const doc = await Model.findOne({ _id: req.params.id, organizationId: req.orgId });
     if (!doc) throw notFound(Model.modelName);
+    checkRules(rules, req.body || {}, true);
     const before = doc.toObject();
     doc.set(clean(req.body));
     if (onUpdate) await onUpdate(doc, before, req);

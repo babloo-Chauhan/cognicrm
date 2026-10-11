@@ -82,6 +82,22 @@ Leads, contacts, accounts, deals, tickets and tasks (`be/modules/crm/importExpor
   dates accept YYYY-MM-DD or DD/MM/YYYY, references resolve by name/email (missing → warning, field left empty).
   Every row is validated before anything is written; the response lists per-row errors with sheet row numbers.
 
+### Form validation ✅
+
+One rules file, copied to `be/lib/validation.js`, `fe/lib/validation.js` and `app/src/validation.js` (a test keeps the
+web copy identical): required, phone (10–15 digits), email, name (needs letters), URL / https, E.164, GSTIN, PAN, IFSC,
+PIN code, HSN/SAC, UPI, bank account, number ranges and max lengths.
+
+- Web: entity forms (`EntityForm` + `entities.js` rules) and hand-written forms via `fe/lib/useValidation.js` — errors
+  show under the field after leaving it or on save. Covers sign-up, team/roles, passwords, callbacks, wrap-up,
+  billing/company settings, quotations/invoices/payments, pipelines, phone numbers, queues, campaigns, business hours,
+  voice agents and the super-admin console.
+- App: entity form, profile, password, callbacks, quotation editor, send and payment panels.
+- API: `crudRouter({ rules })` with `be/modules/crm/fieldRules.js` (create checks all, update checks sent fields);
+  user and company phone numbers; import rejects bad phone numbers per row.
+- Import templates: the Excel template has highlighted required columns, header notes, drop-downs (status, source,
+  company size, Yes/No, team emails) from a hidden Lists sheet and an Instructions sheet with an example per column.
+
 ## Known limits
 
 - Mobile push on Android uses FCM directly: `app/google-services.json` (Firebase project `crmcogni`) in the app,

@@ -105,3 +105,60 @@ export async function sendTable(res, { headers, rows, name, format = 'csv', shee
   res.setHeader('Content-Disposition', `attachment; filename="${name}.csv"`);
   return res.send(toCsv(headers, rows));
 }
+
+const TEMPLATE_ROWS = 1000; // rows that get dropdowns and checks
+const colLetter = (n) => { let s = ''; for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) s = String.fromCharCode(65 + ((x - 1) % 26)) + s; return s; };
+
+/**
+ * Builds an import template workbook: the data sheet first (that is the sheet import reads), with highlighted
+ * required headers, a hint on each header, dropdowns from a hidden "Lists" sheet and number checks; then an
+ * "Instructions" sheet with one row per column and an example. columns: templateGuide() output.
+ */
+export function buildTemplateWorkbook({ sheet, columns }) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(sheet);
+  const guide = wb.addWorksheet('Instructions');
+  const lists = wb.addWorksheet('Lists', { state: 'veryHidden' });
+
+  ws.columns = columns.map((c) => ({ header: c.header, key: c.header, width: Math.max(14, c.header.length + 4, String(c.example).length + 2) }));
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+  const head = ws.getRow(1);
+  head.height = 22;
+  columns.forEach((c, i) => {
+    const cell = head.getCell(i + 1);
+    cell.font = { bold: true, color: { argb: c.required ? 'FFFFFFFF' : 'FF1F2937' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: c.required ? 'FF4F46E5' : 'FFE0E7FF' } };
+    cell.alignment = { vertical: 'middle' };
+    cell.note = `${c.required ? 'Required. ' : ''}${c.hint}${c.example !== '' ? `\nExample: ${c.example}` : ''}`;
+    const range = `${colLetter(i + 1)}2:${colLetter(i + 1)}${TEMPLATE_ROWS + 1}`;
+    if (c.list) {
+      const col = colLetter(lists.columnCount + 1);
+      c.list.forEach((v, r) => { lists.getCell(`${col}${r + 1}`).value = v; });
+      ws.dataValidations.add(range, {
+        type: 'list', allowBlank: true, formulae: [`Lists!$${col}$1:$${col}$${c.list.length}`],
+        showErrorMessage: true, errorStyle: c.strict ? 'stop' : 'information',
+        errorTitle: c.header, error: c.strict ? `Choose a value from the list for ${c.header}.` : `${c.header} is not in the list — it will be saved as typed.`,
+      });
+    } else if (c.number) {
+      ws.dataValidations.add(range, {
+        type: 'decimal', operator: 'greaterThanOrEqual', allowBlank: true, formulae: [0],
+        showErrorMessage: true, errorStyle: 'stop', errorTitle: c.header, error: `${c.header} must be a number (0 or more).`,
+      });
+    }
+  });
+
+  guide.columns = [
+    { header: 'Column', key: 'header', width: 22 },
+    { header: 'Required?', key: 'required', width: 11 },
+    { header: 'What to enter', key: 'hint', width: 58 },
+    { header: 'Example', key: 'example', width: 26 },
+  ];
+  guide.getRow(1).font = { bold: true };
+  for (const c of columns) guide.addRow({ header: c.header, required: c.required ? 'Yes' : '', hint: c.list && !c.strict && c.list.length > 3 ? `${c.hint}. Options: ${c.list.join(', ')}` : c.hint, example: c.example });
+  guide.addRow({});
+  guide.addRow({ header: 'How to import', hint: `Fill one record per row on the "${sheet}" sheet (row 1 is the header — keep it). Blank optional cells are fine.` });
+  guide.addRow({ hint: 'Phone numbers: 10 digits, or with country code. Dates: YYYY-MM-DD or DD/MM/YYYY.' });
+  guide.addRow({ hint: 'Upload the file and click "Preview" first — every row is checked and nothing is saved until you import.' });
+  guide.getColumn('hint').alignment = { wrapText: true, vertical: 'top' };
+  return wb;
+}

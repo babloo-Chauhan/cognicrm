@@ -4,31 +4,48 @@ import { useAuth } from '../../lib/auth.jsx';
 import { duration, label } from '../../lib/format.js';
 import { DataTable, ErrorAlert, Field, Modal, StatusBadge } from '../../components/ui.jsx';
 import { useAsync } from '../../lib/hooks.js';
+import { FORMATS, validateForm } from '../../lib/validation.js';
+
+/** Queue form problems ({ key: message }); fallback.target is the external number. */
+function queueErrors(q) {
+  const problems = validateForm([
+    { key: 'name', label: 'Name', required: true, maxLength: 80 },
+    { key: 'description', label: 'Description', maxLength: 300 },
+    { key: 'maxWaitTime', label: 'Max wait', type: 'number', integer: true, min: 10, max: 3600 },
+    { key: 'music', label: 'Hold music URL', format: 'https', maxLength: 500 },
+    { key: 'afterSeconds', label: 'Overflow after', type: 'number', integer: true, min: 5, max: 3600 },
+  ], { ...q, afterSeconds: q.overflow?.afterSeconds });
+  if (q.fallback?.action === 'external') {
+    if (!q.fallback.target?.trim()) problems.target = 'Enter the number to forward to';
+    else if (!FORMATS.e164.test(q.fallback.target)) problems.target = FORMATS.e164.message;
+  }
+  return problems;
+}
 
 const STRATEGIES = ['round_robin', 'least_busy', 'longest_idle', 'ring_all', 'random'];
 const FALLBACKS = ['voicemail', 'hangup', 'external', 'callback'];
 const QUEUE_FIELDS = ['name', 'description', 'departmentId', 'strategy', 'maxWaitTime', 'music', 'positionAnnouncement', 'overflow', 'fallback', 'active'];
 
-function QueueForm({ value, onChange, users, queues, departments }) {
+function QueueForm({ value, onChange, users, queues, departments, errors: err = {} }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   const agentIds = new Set((value.agents || []).map((a) => a.userId));
   return (
     <div className="form-grid">
-      <Field label="Name"><input className="input" value={value.name || ''} onChange={(e) => set('name', e.target.value)} /></Field>
+      <Field label="Name" required error={err.name}><input className="input" aria-invalid={Boolean(err.name)} value={value.name || ''} onChange={(e) => set('name', e.target.value)} /></Field>
       <Field label="Department">
         <select className="input" value={value.departmentId || ''} onChange={(e) => set('departmentId', e.target.value || null)}>
           <option value="">—</option>
           {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
       </Field>
-      <Field label="Description" className="full"><input className="input" value={value.description || ''} onChange={(e) => set('description', e.target.value)} /></Field>
+      <Field label="Description" className="full" error={err.description}><input className="input" aria-invalid={Boolean(err.description)} value={value.description || ''} onChange={(e) => set('description', e.target.value)} /></Field>
       <Field label="Strategy">
         <select className="input" value={value.strategy || 'longest_idle'} onChange={(e) => set('strategy', e.target.value)}>
           {STRATEGIES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
         </select>
       </Field>
-      <Field label="Max wait (seconds)"><input className="input" type="number" min="10" value={value.maxWaitTime ?? 300} onChange={(e) => set('maxWaitTime', Number(e.target.value))} /></Field>
-      <Field label="Hold music URL"><input className="input" value={value.music || ''} onChange={(e) => set('music', e.target.value)} placeholder="https://…" /></Field>
+      <Field label="Max wait (seconds)" error={err.maxWaitTime}><input className="input" aria-invalid={Boolean(err.maxWaitTime)} type="number" min="10" value={value.maxWaitTime ?? 300} onChange={(e) => set('maxWaitTime', Number(e.target.value))} /></Field>
+      <Field label="Hold music URL" error={err.music}><input className="input" aria-invalid={Boolean(err.music)} value={value.music || ''} onChange={(e) => set('music', e.target.value)} placeholder="https://…" /></Field>
       <label className="checkbox"><input type="checkbox" checked={value.positionAnnouncement ?? true} onChange={(e) => set('positionAnnouncement', e.target.checked)} /> Announce queue position</label>
       <Field label="Overflow to queue">
         <select className="input" value={value.overflow?.queueId || ''} onChange={(e) => set('overflow', { ...(value.overflow || {}), queueId: e.target.value || null })}>
@@ -36,13 +53,13 @@ function QueueForm({ value, onChange, users, queues, departments }) {
           {queues.filter((q) => q.id !== value.id).map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
         </select>
       </Field>
-      <Field label="Overflow after (seconds)"><input className="input" type="number" value={value.overflow?.afterSeconds ?? ''} onChange={(e) => set('overflow', { ...(value.overflow || {}), afterSeconds: e.target.value ? Number(e.target.value) : undefined })} /></Field>
+      <Field label="Overflow after (seconds)" error={err.afterSeconds}><input className="input" aria-invalid={Boolean(err.afterSeconds)} type="number" value={value.overflow?.afterSeconds ?? ''} onChange={(e) => set('overflow', { ...(value.overflow || {}), afterSeconds: e.target.value ? Number(e.target.value) : undefined })} /></Field>
       <Field label="Fallback">
         <select className="input" value={value.fallback?.action || 'voicemail'} onChange={(e) => set('fallback', { ...(value.fallback || {}), action: e.target.value })}>
           {FALLBACKS.map((s) => <option key={s} value={s}>{label(s)}</option>)}
         </select>
       </Field>
-      {value.fallback?.action === 'external' && <Field label="Fallback number"><input className="input" value={value.fallback?.target || ''} onChange={(e) => set('fallback', { ...value.fallback, target: e.target.value })} /></Field>}
+      {value.fallback?.action === 'external' && <Field label="Fallback number" required error={err.target}><input className="input" type="tel" aria-invalid={Boolean(err.target)} value={value.fallback?.target || ''} onChange={(e) => set('fallback', { ...value.fallback, target: e.target.value })} /></Field>}
       <Field label="Agents" className="full">
         <div className="row">
           {users.map((u) => (
@@ -65,9 +82,13 @@ export function Queues() {
   const [editing, setEditing] = useState(null);
   const [saveError, setSaveError] = useState(null);
   const [deptName, setDeptName] = useState('');
+  const [shown, setShown] = useState(false);
 
   const save = async () => {
     setSaveError(null);
+    const bad = Object.keys(queueErrors(editing)).length > 0;
+    setShown(bad);
+    if (bad) return;
     const { id } = editing;
     const body = Object.fromEntries(QUEUE_FIELDS.filter((k) => editing[k] !== undefined).map((k) => [k, editing[k]]));
     body.agents = (editing.agents || []).map((a) => ({ userId: a.userId, priority: a.priority || 0 }));
@@ -120,7 +141,7 @@ export function Queues() {
       {editing && (
         <Modal title={editing.id ? 'Edit queue' : 'New queue'} size="lg" onClose={() => setEditing(null)} footer={<><button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Save</button></>}>
           <ErrorAlert error={saveError} />
-          <QueueForm value={editing} onChange={setEditing} users={users.data?.items || []} queues={data?.items || []} departments={departments.data?.items || []} />
+          <QueueForm value={editing} onChange={setEditing} users={users.data?.items || []} queues={data?.items || []} departments={departments.data?.items || []} errors={shown ? queueErrors(editing) : {}} />
         </Modal>
       )}
     </div>

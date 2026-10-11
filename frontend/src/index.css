@@ -259,6 +259,9 @@
   .dark .input { background: color-mix(in oklch, var(--input) 30%, transparent); }
   textarea.input { height: auto; min-height: 76px; padding: 8px 12px; resize: vertical; }
   .input::placeholder { color: var(--muted-foreground); }
+  .input[aria-invalid="true"] { border-color: var(--destructive); }
+  .input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 25%, transparent); }
+  .field-error { color: var(--destructive); font-size: 12px; line-height: 1.3; }
   .input:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 30%, transparent); }
   .input:disabled { opacity: 0.6; cursor: not-allowed; }
   .input[aria-invalid='true'] { border-color: var(--destructive); }

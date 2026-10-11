@@ -3,6 +3,7 @@ import { get, post, put } from '../lib/api.js';
 import { dateTime, label } from '../lib/format.js';
 import { DataTable, ErrorAlert, Field, StatusBadge } from '../components/ui.jsx';
 import { useAsync } from '../lib/hooks.js';
+import { validateForm } from '../lib/validation.js';
 
 const USE_CASES = ['inbound', 'outbound', 'appointment_booking', 'lead_qualification', 'support', 'faq', 'order_status', 'payment_status', 'follow_up', 'reminder'];
 
@@ -60,7 +61,22 @@ function Editor({ agent, onSaved }) {
   const set = (k, v) => setA({ ...a, [k]: v });
   const toggle = (k, v) => set(k, (a[k] || []).includes(v) ? a[k].filter((x) => x !== v) : [...(a[k] || []), v]);
 
+  const [shown, setShown] = useState(false);
+  const problems = validateForm([
+    { key: 'name', label: 'Agent name', required: true, maxLength: 80 },
+    { key: 'role', label: 'Role', maxLength: 100 },
+    { key: 'companyName', label: 'Company name', maxLength: 150 },
+    { key: 'greeting', label: 'Greeting', maxLength: 500 },
+    { key: 'prompt', label: 'Instructions', type: 'textarea', maxLength: 8000 },
+    { key: 'maxTurns', label: 'Max turns', type: 'number', integer: true, min: 1, max: 100 },
+    { key: 'maxDurationSeconds', label: 'Max call duration', type: 'number', integer: true, min: 30, max: 3600 },
+    { key: 'maxConcurrent', label: 'Max concurrent calls', type: 'number', integer: true, min: 1, max: 100 },
+    { key: 'dailyLimit', label: 'Daily call limit', type: 'number', integer: true, min: 1, max: 100000 },
+  ], { name: a.name, prompt: a.prompt, ...a.profile, ...a.escalation, ...a.callLimits });
+  const err = shown ? problems : {};
   const save = async () => {
+    setShown(Object.keys(problems).length > 0);
+    if (Object.keys(problems).length) return setError(new Error('Please fix the highlighted fields.'));
     setError(null);
     setSaved(false);
     const body = {
@@ -85,12 +101,12 @@ function Editor({ agent, onSaved }) {
           <ErrorAlert error={error} />
           {saved && <div className="alert alert-info">Saved.</div>}
           <div className="form-grid">
-            <Field label="Agent name"><input className="input" value={a.name || ''} onChange={(e) => set('name', e.target.value)} /></Field>
+            <Field label="Agent name" required error={err.name}><input className="input" aria-invalid={Boolean(err.name)} value={a.name || ''} onChange={(e) => set('name', e.target.value)} /></Field>
             <Field label="Status"><select className="input" value={a.status || 'draft'} onChange={(e) => set('status', e.target.value)}>{['draft', 'active', 'paused'].map((s) => <option key={s} value={s}>{label(s)}</option>)}</select></Field>
-            <Field label="Role"><input className="input" value={a.profile?.role || ''} onChange={(e) => set('profile', { ...a.profile, role: e.target.value })} /></Field>
-            <Field label="Company name"><input className="input" value={a.profile?.companyName || ''} onChange={(e) => set('profile', { ...a.profile, companyName: e.target.value })} /></Field>
-            <Field label="Greeting" className="full"><input className="input" value={a.profile?.greeting || ''} onChange={(e) => set('profile', { ...a.profile, greeting: e.target.value })} /></Field>
-            <Field label="Instructions (prompt)" className="full"><textarea className="input" rows={5} value={a.prompt || ''} onChange={(e) => set('prompt', e.target.value)} /></Field>
+            <Field label="Role" error={err.role}><input className="input" aria-invalid={Boolean(err.role)} value={a.profile?.role || ''} onChange={(e) => set('profile', { ...a.profile, role: e.target.value })} /></Field>
+            <Field label="Company name" error={err.companyName}><input className="input" aria-invalid={Boolean(err.companyName)} value={a.profile?.companyName || ''} onChange={(e) => set('profile', { ...a.profile, companyName: e.target.value })} /></Field>
+            <Field label="Greeting" className="full" error={err.greeting}><input className="input" aria-invalid={Boolean(err.greeting)} value={a.profile?.greeting || ''} onChange={(e) => set('profile', { ...a.profile, greeting: e.target.value })} /></Field>
+            <Field label="Instructions (prompt)" className="full" error={err.prompt}><textarea className="input" aria-invalid={Boolean(err.prompt)} rows={5} value={a.prompt || ''} onChange={(e) => set('prompt', e.target.value)} /></Field>
             <Field label="Business rules (one per line)" className="full"><textarea className="input" rows={3} value={(a.businessRules || []).join('\n')} onChange={(e) => set('businessRules', e.target.value.split('\n').filter(Boolean))} /></Field>
             <Field label="Languages"><input className="input" value={(a.languages || []).join(', ')} onChange={(e) => set('languages', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} /></Field>
             <Field label="Voice language"><input className="input" value={a.voice?.language || 'en'} onChange={(e) => set('voice', { ...a.voice, language: e.target.value })} /></Field>
@@ -122,10 +138,10 @@ function Editor({ agent, onSaved }) {
               {queues.data?.items?.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
             </select>
           </Field>
-          <Field label="Max turns"><input className="input" type="number" value={a.escalation?.maxTurns ?? 20} onChange={(e) => set('escalation', { ...a.escalation, maxTurns: Number(e.target.value) })} /></Field>
-          <Field label="Max call duration (s)"><input className="input" type="number" value={a.callLimits?.maxDurationSeconds ?? 600} onChange={(e) => set('callLimits', { ...a.callLimits, maxDurationSeconds: Number(e.target.value) })} /></Field>
-          <Field label="Max concurrent calls"><input className="input" type="number" value={a.callLimits?.maxConcurrent ?? 5} onChange={(e) => set('callLimits', { ...a.callLimits, maxConcurrent: Number(e.target.value) })} /></Field>
-          <Field label="Daily call limit"><input className="input" type="number" value={a.callLimits?.dailyLimit ?? 500} onChange={(e) => set('callLimits', { ...a.callLimits, dailyLimit: Number(e.target.value) })} /></Field>
+          <Field label="Max turns" error={err.maxTurns}><input className="input" aria-invalid={Boolean(err.maxTurns)} type="number" value={a.escalation?.maxTurns ?? 20} onChange={(e) => set('escalation', { ...a.escalation, maxTurns: Number(e.target.value) })} /></Field>
+          <Field label="Max call duration (s)" error={err.maxDurationSeconds}><input className="input" aria-invalid={Boolean(err.maxDurationSeconds)} type="number" value={a.callLimits?.maxDurationSeconds ?? 600} onChange={(e) => set('callLimits', { ...a.callLimits, maxDurationSeconds: Number(e.target.value) })} /></Field>
+          <Field label="Max concurrent calls" error={err.maxConcurrent}><input className="input" aria-invalid={Boolean(err.maxConcurrent)} type="number" value={a.callLimits?.maxConcurrent ?? 5} onChange={(e) => set('callLimits', { ...a.callLimits, maxConcurrent: Number(e.target.value) })} /></Field>
+          <Field label="Daily call limit" error={err.dailyLimit}><input className="input" aria-invalid={Boolean(err.dailyLimit)} type="number" value={a.callLimits?.dailyLimit ?? 500} onChange={(e) => set('callLimits', { ...a.callLimits, dailyLimit: Number(e.target.value) })} /></Field>
           <Field label="Answers inbound calls on">
             <div className="stack" style={{ gap: 4 }}>{numbers.data?.items?.map((n) => <label key={n.id} className="checkbox small"><input type="checkbox" checked={(a.phoneNumberIds || []).includes(n.id)} onChange={() => toggle('phoneNumberIds', n.id)} />{n.number}</label>)}</div>
           </Field>

@@ -3,6 +3,7 @@ import { get, post } from '../lib/api.js';
 import { duration } from '../lib/format.js';
 import { ErrorAlert, Field, Modal } from '../components/ui.jsx';
 import { useCalls } from './CallContext.jsx';
+import { validateField } from '../lib/validation.js';
 
 const LEAD_STATUSES = ['', 'contacted', 'qualified', 'unqualified'];
 const DEAL_STAGES = ['', 'prospecting', 'qualification', 'proposal', 'negotiation', 'won', 'lost'];
@@ -24,6 +25,7 @@ function WrapUpForm({ wrapUpCall }) {
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [remaining, setRemaining] = useState(null);
+  const [showErrors, setShowErrors] = useState(false);
 
   useEffect(() => {
     get('/call-dispositions').then((r) => setDispositions(r.items)).catch(() => {});
@@ -41,7 +43,26 @@ function WrapUpForm({ wrapUpCall }) {
   const dispo = dispositions.find((d) => d.code === form.code);
   const set = (k, v) => setExtras({ ...extras, [k]: v });
 
+  // Follow-up actions must be complete and in the future before the wrap-up is saved
+  const now = new Date();
+  const problems = {
+    code: !form.code ? 'Choose how the call ended' : null,
+    notes: validateField({ label: 'Notes', type: 'textarea', maxLength: 2000 }, form.notes),
+    taskTitle: extras.taskDue && !extras.taskTitle?.trim() ? 'Enter a task title' : validateField({ label: 'Task title', maxLength: 200 }, extras.taskTitle),
+    taskDue: extras.taskDue && new Date(extras.taskDue) < now ? 'Task due time has already passed' : null,
+    callbackAt: dispo?.requiresCallback && !extras.callbackAt ? 'This outcome needs a callback time'
+      : extras.callbackAt && new Date(extras.callbackAt) < now ? 'Callback time has already passed' : null,
+    callbackNotes: validateField({ label: 'Callback notes', maxLength: 500 }, extras.callbackNotes),
+    ticketSubject: validateField({ label: 'Ticket subject', maxLength: 200 }, extras.ticketSubject),
+    emailSubject: extras.emailBody && !extras.emailSubject?.trim() ? 'Add a subject for the email' : null,
+    emailBody: extras.emailSubject && !extras.emailBody?.trim() ? 'Add the email text' : null,
+  };
+  const invalid = Object.values(problems).some(Boolean);
+  const err = (k) => (showErrors ? problems[k] : null);
+
   const save = async () => {
+    setShowErrors(invalid);
+    if (invalid) return;
     setSaving(true);
     setError(null);
     const body = { code: form.code, notes: form.notes || undefined };
@@ -74,7 +95,7 @@ function WrapUpForm({ wrapUpCall }) {
         <>
           {remaining != null && <span className="muted small" style={{ marginRight: 'auto' }}>{remaining > 0 ? `Wrap-up time left: ${duration(remaining)}` : 'Wrap-up time is over'}</span>}
           <button type="button" className="btn" onClick={finishWrapUp}>Skip</button>
-          <button type="button" className="btn btn-primary" disabled={!form.code || saving} onClick={save}>Save & finish</button>
+          <button type="button" className="btn btn-primary" disabled={saving} onClick={save}>Save & finish</button>
         </>
       )}
     >
@@ -86,12 +107,13 @@ function WrapUpForm({ wrapUpCall }) {
             <button type="button" key={d.code} className={`btn btn-sm ${form.code === d.code ? 'active' : ''}`} onClick={() => setForm({ ...form, code: d.code })}>{d.label}</button>
           ))}
         </div>
-        <Field label="Notes"><textarea className="input" rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
+        {err('code') && <small className="field-error" role="alert">{err('code')}</small>}
+        <Field label="Notes" error={err('notes')}><textarea className="input" rows={3} aria-invalid={Boolean(err('notes'))} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
         <div className="form-grid">
-          <Field label="Create task"><input className="input" placeholder="Task title" value={extras.taskTitle || ''} onChange={(e) => set('taskTitle', e.target.value)} /></Field>
-          <Field label="Task due"><input className="input" type="datetime-local" value={extras.taskDue || ''} onChange={(e) => set('taskDue', e.target.value)} /></Field>
-          <Field label={`Schedule callback${dispo?.requiresCallback ? ' (required)' : ''}`}><input className="input" type="datetime-local" value={extras.callbackAt || ''} onChange={(e) => set('callbackAt', e.target.value)} /></Field>
-          <Field label="Callback notes"><input className="input" value={extras.callbackNotes || ''} onChange={(e) => set('callbackNotes', e.target.value)} /></Field>
+          <Field label="Create task" error={err('taskTitle')}><input className="input" aria-invalid={Boolean(err('taskTitle'))} placeholder="Task title" value={extras.taskTitle || ''} onChange={(e) => set('taskTitle', e.target.value)} /></Field>
+          <Field label="Task due" error={err('taskDue')}><input className="input" aria-invalid={Boolean(err('taskDue'))} type="datetime-local" value={extras.taskDue || ''} onChange={(e) => set('taskDue', e.target.value)} /></Field>
+          <Field label={`Schedule callback${dispo?.requiresCallback ? ' (required)' : ''}`} error={err('callbackAt')}><input className="input" type="datetime-local" aria-invalid={Boolean(err('callbackAt'))} value={extras.callbackAt || ''} onChange={(e) => set('callbackAt', e.target.value)} /></Field>
+          <Field label="Callback notes" error={err('callbackNotes')}><input className="input" aria-invalid={Boolean(err('callbackNotes'))} value={extras.callbackNotes || ''} onChange={(e) => set('callbackNotes', e.target.value)} /></Field>
           {related.leadId && (
             <Field label="Update lead status">
               <select className="input" value={extras.leadStatus || ''} onChange={(e) => set('leadStatus', e.target.value)}>
@@ -106,7 +128,7 @@ function WrapUpForm({ wrapUpCall }) {
               </select>
             </Field>
           )}
-          <Field label="Create ticket"><input className="input" placeholder="Ticket subject" value={extras.ticketSubject || ''} onChange={(e) => set('ticketSubject', e.target.value)} /></Field>
+          <Field label="Create ticket" error={err('ticketSubject')}><input className="input" aria-invalid={Boolean(err('ticketSubject'))} placeholder="Ticket subject" value={extras.ticketSubject || ''} onChange={(e) => set('ticketSubject', e.target.value)} /></Field>
           <Field label="Send WhatsApp">
             <div className="row" style={{ flexWrap: 'nowrap' }}>
               <select className="input" value={extras.whatsappTemplate || ''} onChange={(e) => set('whatsappTemplate', e.target.value)}>
@@ -116,8 +138,8 @@ function WrapUpForm({ wrapUpCall }) {
               {!extras.whatsappTemplate && <input className="input" placeholder="Message" value={extras.whatsappBody || ''} onChange={(e) => set('whatsappBody', e.target.value)} />}
             </div>
           </Field>
-          <Field label="Send email — subject"><input className="input" value={extras.emailSubject || ''} onChange={(e) => set('emailSubject', e.target.value)} /></Field>
-          <Field label="Email body"><input className="input" value={extras.emailBody || ''} onChange={(e) => set('emailBody', e.target.value)} /></Field>
+          <Field label="Send email — subject" error={err('emailSubject')}><input className="input" aria-invalid={Boolean(err('emailSubject'))} value={extras.emailSubject || ''} onChange={(e) => set('emailSubject', e.target.value)} /></Field>
+          <Field label="Email body" error={err('emailBody')}><input className="input" aria-invalid={Boolean(err('emailBody'))} value={extras.emailBody || ''} onChange={(e) => set('emailBody', e.target.value)} /></Field>
         </div>
         <label className="checkbox small"><input type="checkbox" checked={Boolean(extras.addToDnc)} onChange={(e) => set('addToDnc', e.target.checked)} /> Customer asked not to be called again (add to Do-Not-Call list)</label>
         {!capabilities?.configured && <div className="small muted">Messages require an SMS/WhatsApp/email provider.</div>}

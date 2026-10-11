@@ -348,9 +348,9 @@ describe('subscriptions, modules and limits', () => {
     expect(third.body.message).toMatch(/User limit reached/);
     await CompanySubscription.updateOne({ organizationId: a.org.id }, { customLimits: { leads: 2 } });
     invalidateTenant(a.org.id);
-    expect((await http().post(api('/leads')).set(a.auth).send({ name: '1' })).status).toBe(201);
-    expect((await http().post(api('/leads')).set(a.auth).send({ name: '2' })).status).toBe(201);
-    const over = await http().post(api('/leads')).set(a.auth).send({ name: '3' });
+    expect((await http().post(api('/leads')).set(a.auth).send({ name: 'Lead 1' })).status).toBe(201);
+    expect((await http().post(api('/leads')).set(a.auth).send({ name: 'Lead 2' })).status).toBe(201);
+    const over = await http().post(api('/leads')).set(a.auth).send({ name: 'Lead 3' });
     expect(over.body.code).toBe('PLAN_LIMIT_REACHED');
     // Import that would exceed the limit is rejected up front
     const csv = 'Name\nA\nB\n';

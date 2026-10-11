@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/auth.jsx';
 import { duration, label, percent } from '../../lib/format.js';
 import { DataTable, ErrorAlert, Field, Modal, Stat, StatusBadge } from '../../components/ui.jsx';
 import { useAsync } from '../../lib/hooks.js';
+import { validateForm } from '../../lib/validation.js';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -15,7 +16,21 @@ function CampaignEditor({ initial, onClose, onSaved }) {
   const dispositions = useAsync(() => get('/call-dispositions'), []);
   const set = (k, v) => setC({ ...c, [k]: v });
   const setSchedule = (k, v) => setC({ ...c, schedule: { ...c.schedule, [k]: v } });
+  const [shown, setShown] = useState(false);
+  const problems = validateForm([
+    { key: 'name', label: 'Name', required: true, maxLength: 100 },
+    { key: 'timezone', label: 'Time zone', required: true, maxLength: 60 },
+    { key: 'maxAttempts', label: 'Max attempts', type: 'number', integer: true, min: 1, max: 10 },
+    { key: 'retryDelayMinutes', label: 'Retry delay', type: 'number', integer: true, min: 1, max: 1440 },
+    { key: 'maxAbandonRate', label: 'Max abandon rate', type: 'number', min: 0, max: 0.1 },
+    { key: 'maxDialRatio', label: 'Max dial ratio', type: 'number', min: 1, max: 3 },
+  ], { name: c.name, timezone: c.schedule?.timezone, ...c.retryPolicy, ...c.predictive });
+  if (c.schedule?.start && c.schedule?.end && c.schedule.start >= c.schedule.end) problems.end = 'Window end must be after the start';
+  if (problems.maxAbandonRate) problems.maxAbandonRate = 'Max abandon rate must be between 0 and 10%';
+  const err = shown ? problems : {};
   const save = async () => {
+    setShown(Object.keys(problems).length > 0);
+    if (Object.keys(problems).length) return;
     setError(null);
     const body = {
       name: c.name, description: c.description, mode: c.mode, agentIds: c.agentIds, callerIdNumberId: c.callerIdNumberId || undefined,
@@ -33,7 +48,7 @@ function CampaignEditor({ initial, onClose, onSaved }) {
     <Modal title={c.id ? 'Edit campaign' : 'New campaign'} size="lg" onClose={onClose} footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Save</button></>}>
       <ErrorAlert error={error} />
       <div className="form-grid">
-        <Field label="Name"><input className="input" value={c.name || ''} onChange={(e) => set('name', e.target.value)} /></Field>
+        <Field label="Name" required error={err.name}><input className="input" aria-invalid={Boolean(err.name)} value={c.name || ''} onChange={(e) => set('name', e.target.value)} /></Field>
         <Field label="Dialing mode">
           <select className="input" value={c.mode} onChange={(e) => set('mode', e.target.value)}>
             <option value="preview">Preview — agent reviews before each call</option>
@@ -47,16 +62,16 @@ function CampaignEditor({ initial, onClose, onSaved }) {
             {numbers.data?.items?.filter((n) => n.capabilities?.voice).map((n) => <option key={n.id} value={n.id}>{n.number}{n.label ? ` (${n.label})` : ''}</option>)}
           </select>
         </Field>
-        <Field label="Time zone"><input className="input" value={c.schedule.timezone} onChange={(e) => setSchedule('timezone', e.target.value)} /></Field>
+        <Field label="Time zone" required error={err.timezone}><input className="input" aria-invalid={Boolean(err.timezone)} value={c.schedule.timezone} onChange={(e) => setSchedule('timezone', e.target.value)} /></Field>
         <Field label="Calling window start"><input className="input" type="time" value={c.schedule.start} onChange={(e) => setSchedule('start', e.target.value)} /></Field>
-        <Field label="Calling window end"><input className="input" type="time" value={c.schedule.end} onChange={(e) => setSchedule('end', e.target.value)} /></Field>
+        <Field label="Calling window end" error={err.end}><input className="input" aria-invalid={Boolean(err.end)} type="time" value={c.schedule.end} onChange={(e) => setSchedule('end', e.target.value)} /></Field>
         <Field label="Days" className="full">
           <div className="row">{DAYS.map((d, i) => (
             <label key={d} className="checkbox badge"><input type="checkbox" checked={c.schedule.days.includes(i)} onChange={(e) => setSchedule('days', e.target.checked ? [...c.schedule.days, i] : c.schedule.days.filter((x) => x !== i))} />{d}</label>
           ))}</div>
         </Field>
-        <Field label="Max attempts"><input className="input" type="number" min="1" max="10" value={c.retryPolicy.maxAttempts} onChange={(e) => set('retryPolicy', { ...c.retryPolicy, maxAttempts: Number(e.target.value) })} /></Field>
-        <Field label="Retry delay (minutes)"><input className="input" type="number" min="1" value={c.retryPolicy.retryDelayMinutes} onChange={(e) => set('retryPolicy', { ...c.retryPolicy, retryDelayMinutes: Number(e.target.value) })} /></Field>
+        <Field label="Max attempts" error={err.maxAttempts}><input className="input" aria-invalid={Boolean(err.maxAttempts)} type="number" min="1" max="10" value={c.retryPolicy.maxAttempts} onChange={(e) => set('retryPolicy', { ...c.retryPolicy, maxAttempts: Number(e.target.value) })} /></Field>
+        <Field label="Retry delay (minutes)" error={err.retryDelayMinutes}><input className="input" aria-invalid={Boolean(err.retryDelayMinutes)} type="number" min="1" value={c.retryPolicy.retryDelayMinutes} onChange={(e) => set('retryPolicy', { ...c.retryPolicy, retryDelayMinutes: Number(e.target.value) })} /></Field>
         <Field label="Agents" className="full">
           <div className="row">{users.data?.items?.map((u) => (
             <label key={u.id} className="checkbox badge"><input type="checkbox" checked={c.agentIds.includes(u.id)} onChange={(e) => set('agentIds', e.target.checked ? [...c.agentIds, u.id] : c.agentIds.filter((x) => x !== u.id))} />{u.name}</label>
@@ -87,8 +102,8 @@ function CampaignEditor({ initial, onClose, onSaved }) {
               <label className="checkbox"><input type="checkbox" checked={Boolean(c.predictive?.complianceAcknowledged)} onChange={(e) => set('predictive', { ...c.predictive, complianceAcknowledged: e.target.checked })} /> I confirm this is compliant</label>
             </div>
             <div className="row">
-              <Field label="Max abandon rate (%)"><input className="input" type="number" min="0" max="10" step="0.5" value={(c.predictive?.maxAbandonRate ?? 0.03) * 100} onChange={(e) => set('predictive', { ...c.predictive, maxAbandonRate: Number(e.target.value) / 100 })} /></Field>
-              <Field label="Max dial ratio"><input className="input" type="number" min="1" max="3" step="0.1" value={c.predictive?.maxDialRatio ?? 1.5} onChange={(e) => set('predictive', { ...c.predictive, maxDialRatio: Number(e.target.value) })} /></Field>
+              <Field label="Max abandon rate (%)" error={err.maxAbandonRate}><input className="input" aria-invalid={Boolean(err.maxAbandonRate)} type="number" min="0" max="10" step="0.5" value={(c.predictive?.maxAbandonRate ?? 0.03) * 100} onChange={(e) => set('predictive', { ...c.predictive, maxAbandonRate: Number(e.target.value) / 100 })} /></Field>
+              <Field label="Max dial ratio" error={err.maxDialRatio}><input className="input" aria-invalid={Boolean(err.maxDialRatio)} type="number" min="1" max="3" step="0.1" value={c.predictive?.maxDialRatio ?? 1.5} onChange={(e) => set('predictive', { ...c.predictive, maxDialRatio: Number(e.target.value) })} /></Field>
             </div>
           </div>
         )}

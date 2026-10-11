@@ -3,6 +3,7 @@ import { del, get, patch, upload } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useAsync } from '../lib/hooks.js';
 import { ErrorAlert, Field, Skeleton } from '../components/ui.jsx';
+import { validateForm } from '../lib/validation.js';
 import { toast } from '../lib/toast.js';
 
 const TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'Australia/Sydney', 'UTC'];
@@ -59,6 +60,7 @@ export function CompanySettings() {
   const [profile, setProfile] = useState(null);
   const [prefs, setPrefs] = useState(null);
   const [error, setError] = useState(null);
+  const [showErrors, setShowErrors] = useState(false);
   const editable = can('settings:manage');
 
   if (!org.data) return org.error ? <ErrorAlert error={org.error} /> : <Skeleton />;
@@ -80,8 +82,36 @@ export function CompanySettings() {
   const setPr = (k, v) => setPrefs({ ...pr, [k]: v });
   const setNested = (group, k, v) => setPrefs({ ...pr, [group]: { ...pr[group], [k]: v } });
 
+  // One flat view of the form for the shared rules; GSTIN / PIN checks apply to Indian companies
+  const india = !p.address.country || /^(in|india)$/i.test(p.address.country.trim());
+  const allErrors = validateForm([
+    { key: 'name', label: 'Company name', required: true, maxLength: 150 },
+    { key: 'legalName', label: 'Legal name', maxLength: 150 },
+    { key: 'email', label: 'Email', type: 'email' },
+    { key: 'phone', label: 'Phone', type: 'phone' },
+    { key: 'website', label: 'Website', format: 'https', maxLength: 200 },
+    { key: 'taxId', label: 'GST / tax number', ...(india ? { format: 'gstin' } : { maxLength: 20 }) },
+    { key: 'industry', label: 'Industry', maxLength: 60 },
+    { key: 'line1', label: 'Address', maxLength: 300 },
+    { key: 'city', label: 'City', maxLength: 60 },
+    { key: 'state', label: 'State', maxLength: 60 },
+    { key: 'country', label: 'Country', maxLength: 60 },
+    { key: 'postalCode', label: 'Postal code', ...(india ? { format: 'pincode' } : { maxLength: 12 }) },
+    { key: 'brandName', label: 'Brand name', maxLength: 60 },
+    { key: 'taxName', label: 'Tax name', maxLength: 20 },
+    { key: 'defaultRate', label: 'Default tax rate', type: 'number', min: 0, max: 100 },
+    { key: 'fromName', label: 'Email sender name', maxLength: 80 },
+    { key: 'replyTo', label: 'Reply-to email', type: 'email' },
+  ], { ...p, ...p.address, ...pr.branding, ...pr.taxSettings, ...pr.emailSettings });
+  const errors = showErrors ? allErrors : {};
+
   const save = async () => {
     setError(null);
+    if (Object.keys(allErrors).length) {
+      setShowErrors(true);
+      return setError(new Error('Please fix the highlighted fields.'));
+    }
+    setShowErrors(false);
     try {
       const clean = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
       await patch('/company/profile', clean);
@@ -96,7 +126,7 @@ export function CompanySettings() {
     }
   };
 
-  const input = (value, onChange, props = {}) => <input className="input" disabled={!editable} value={value ?? ''} onChange={(e) => onChange(e.target.value)} {...props} />;
+  const input = (value, onChange, props = {}, key = null) => <input className="input" disabled={!editable} aria-invalid={key && errors[key] ? true : undefined} value={value ?? ''} onChange={(e) => onChange(e.target.value)} {...props} />;
 
   return (
     <div className="stack">
@@ -110,18 +140,18 @@ export function CompanySettings() {
         </dl>
       </div></div>
       <div className="card"><div className="card-header"><h3>Business details</h3></div><div className="card-body form-grid">
-        <Field label="Company name">{input(p.name, (v) => setP('name', v))}</Field>
-        <Field label="Legal name">{input(p.legalName, (v) => setP('legalName', v))}</Field>
-        <Field label="Email">{input(p.email, (v) => setP('email', v), { type: 'email' })}</Field>
-        <Field label="Phone">{input(p.phone, (v) => setP('phone', v))}</Field>
-        <Field label="Website">{input(p.website, (v) => setP('website', v), { placeholder: 'https://' })}</Field>
-        <Field label="GST / tax number">{input(p.taxId, (v) => setP('taxId', v))}</Field>
-        <Field label="Industry">{input(p.industry, (v) => setP('industry', v))}</Field>
-        <Field label="Address">{input(p.address.line1, (v) => setAddr('line1', v))}</Field>
-        <Field label="City">{input(p.address.city, (v) => setAddr('city', v))}</Field>
-        <Field label="State">{input(p.address.state, (v) => setAddr('state', v))}</Field>
-        <Field label="Country">{input(p.address.country, (v) => setAddr('country', v))}</Field>
-        <Field label="Postal code">{input(p.address.postalCode, (v) => setAddr('postalCode', v))}</Field>
+        <Field label="Company name" required error={errors.name}>{input(p.name, (v) => setP('name', v), {}, 'name')}</Field>
+        <Field label="Legal name" error={errors.legalName}>{input(p.legalName, (v) => setP('legalName', v), {}, 'legalName')}</Field>
+        <Field label="Email" error={errors.email}>{input(p.email, (v) => setP('email', v), { type: 'email' }, 'email')}</Field>
+        <Field label="Phone" error={errors.phone}>{input(p.phone, (v) => setP('phone', v), {}, 'phone')}</Field>
+        <Field label="Website" error={errors.website}>{input(p.website, (v) => setP('website', v), { placeholder: 'https://' }, 'website')}</Field>
+        <Field label="GST / tax number" error={errors.taxId}>{input(p.taxId, (v) => setP('taxId', v), {}, 'taxId')}</Field>
+        <Field label="Industry" error={errors.industry}>{input(p.industry, (v) => setP('industry', v), {}, 'industry')}</Field>
+        <Field label="Address" error={errors.line1}>{input(p.address.line1, (v) => setAddr('line1', v), {}, 'line1')}</Field>
+        <Field label="City" error={errors.city}>{input(p.address.city, (v) => setAddr('city', v), {}, 'city')}</Field>
+        <Field label="State" error={errors.state}>{input(p.address.state, (v) => setAddr('state', v), {}, 'state')}</Field>
+        <Field label="Country" error={errors.country}>{input(p.address.country, (v) => setAddr('country', v), {}, 'country')}</Field>
+        <Field label="Postal code" error={errors.postalCode}>{input(p.address.postalCode, (v) => setAddr('postalCode', v), {}, 'postalCode')}</Field>
       </div></div>
       <div className="card"><div className="card-header"><h3>Branding</h3></div><div className="card-body form-grid">
         <LogoUploader
@@ -129,7 +159,7 @@ export function CompanySettings() {
           editable={editable}
           onChange={(url) => { setNested('branding', 'logoUrl', url); org.reload(); refresh(); }}
         />
-        <Field label="Brand name" hint="Shown to employees instead of the company name, e.g. in the app">{input(pr.branding.brandName, (v) => setNested('branding', 'brandName', v))}</Field>
+        <Field label="Brand name" hint="Shown to employees instead of the company name, e.g. in the app" error={errors.brandName}>{input(pr.branding.brandName, (v) => setNested('branding', 'brandName', v), {}, 'brandName')}</Field>
         <Field label="Primary colour">{input(pr.branding.primaryColor, (v) => setNested('branding', 'primaryColor', v), { type: 'color', style: { height: 38, padding: 4 } })}</Field>
       </div></div>
       <div className="card"><div className="card-header"><h3>Localisation, tax & notifications</h3></div><div className="card-body form-grid">
@@ -147,10 +177,10 @@ export function CompanySettings() {
             <option value="en">English</option><option value="hi">Hindi</option><option value="hinglish">Hinglish</option>
           </select>
         </Field>
-        <Field label="Tax name">{input(pr.taxSettings.taxName, (v) => setNested('taxSettings', 'taxName', v))}</Field>
-        <Field label="Default tax rate %">{input(pr.taxSettings.defaultRate, (v) => setNested('taxSettings', 'defaultRate', Number(v)), { type: 'number', min: 0, max: 100 })}</Field>
-        <Field label="Email sender name">{input(pr.emailSettings.fromName, (v) => setNested('emailSettings', 'fromName', v))}</Field>
-        <Field label="Reply-to email">{input(pr.emailSettings.replyTo, (v) => setNested('emailSettings', 'replyTo', v), { type: 'email' })}</Field>
+        <Field label="Tax name" error={errors.taxName}>{input(pr.taxSettings.taxName, (v) => setNested('taxSettings', 'taxName', v), {}, 'taxName')}</Field>
+        <Field label="Default tax rate %" error={errors.defaultRate}>{input(pr.taxSettings.defaultRate, (v) => setNested('taxSettings', 'defaultRate', Number(v)), { type: 'number', min: 0, max: 100 }, 'defaultRate')}</Field>
+        <Field label="Email sender name" error={errors.fromName}>{input(pr.emailSettings.fromName, (v) => setNested('emailSettings', 'fromName', v), {}, 'fromName')}</Field>
+        <Field label="Reply-to email" error={errors.replyTo}>{input(pr.emailSettings.replyTo, (v) => setNested('emailSettings', 'replyTo', v), { type: 'email' }, 'replyTo')}</Field>
         {['email', 'push', 'inApp'].map((k) => (
           <label key={k} className="checkbox"><input type="checkbox" disabled={!editable} checked={Boolean(pr.notificationSettings[k])} onChange={(e) => setNested('notificationSettings', k, e.target.checked)} /> {k === 'inApp' ? 'In-app' : k[0].toUpperCase() + k.slice(1)} notifications</label>
         ))}

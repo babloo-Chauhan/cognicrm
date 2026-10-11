@@ -5,12 +5,14 @@ import { useAuth } from '../../lib/auth.jsx';
 import { dateTime, label } from '../../lib/format.js';
 import { ErrorAlert, Field, Loading, Modal, StatusBadge } from '../../components/ui.jsx';
 import { useAsync } from '../../lib/hooks.js';
+import { useValidation } from '../../lib/useValidation.js';
 import { ItemsView, ProcessSteps } from './common.jsx';
 import {
   copyText, customerName, docNumber, invoiceStep, money2, PAYMENT_METHODS, quoteStep, whatsappShare,
 } from './salesUtils.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Local calendar date (YYYY-MM-DD): toISOString would give yesterday before 5:30 am in India
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 function ShareBox({ doc, kind, delivery }) {
   const [copied, setCopied] = useState(false);
@@ -43,7 +45,12 @@ function SendModal({ doc, kind, onClose, onSent }) {
   const [form, setForm] = useState({ email: Boolean(doc.customer?.email), to: doc.customer?.email || '', message: '' });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const v = useValidation([
+    form.email && { key: 'to', label: 'Email to', type: 'email', required: true },
+    { key: 'message', label: 'Message', type: 'textarea', maxLength: 2000 },
+  ], form);
   const send = async () => {
+    if (!v.check()) return;
     setBusy(true);
     setError(null);
     try {
@@ -64,8 +71,8 @@ function SendModal({ doc, kind, onClose, onSent }) {
         <ErrorAlert error={error} />
         {kind === 'invoice' && doc.status === 'draft' && <div className="alert alert-info">Sending issues the invoice: it gets its invoice number and can no longer be edited.</div>}
         <label className="checkbox"><input type="checkbox" checked={form.email} onChange={(e) => setForm({ ...form, email: e.target.checked })} /> Email the link to the customer</label>
-        {form.email && <Field label="Email to"><input className="input" type="email" value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} /></Field>}
-        <Field label="Message (optional)"><textarea className="input" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} /></Field>
+        {form.email && <Field label="Email to" required error={v.errors.to}><input className="input" type="email" aria-invalid={Boolean(v.errors.to)} value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} /></Field>}
+        <Field label="Message (optional)" error={v.errors.message}><textarea className="input" aria-invalid={Boolean(v.errors.message)} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} /></Field>
         <p className="small muted" style={{ margin: 0 }}>You’ll also get a link to share on WhatsApp or anywhere else.</p>
       </div>
     </Modal>
@@ -75,14 +82,15 @@ function SendModal({ doc, kind, onClose, onSent }) {
 function PromptModal({ title, fieldLabel, initial = '', confirm, danger, onClose, onConfirm }) {
   const [value, setValue] = useState(initial);
   const [error, setError] = useState(null);
+  const tooLong = value.length > 500 ? `${fieldLabel} is too long (max 500 characters)` : null;
   return (
     <Modal
       title={title}
       onClose={onClose}
-      footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={() => onConfirm(value).catch(setError)}>{confirm}</button></>}
+      footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} disabled={Boolean(tooLong)} onClick={() => onConfirm(value).catch(setError)}>{confirm}</button></>}
     >
       <ErrorAlert error={error} />
-      <Field label={fieldLabel}><input className="input" value={value} onChange={(e) => setValue(e.target.value)} /></Field>
+      <Field label={fieldLabel} error={tooLong}><input className="input" aria-invalid={Boolean(tooLong)} value={value} onChange={(e) => setValue(e.target.value)} /></Field>
     </Modal>
   );
 }
@@ -90,7 +98,18 @@ function PromptModal({ title, fieldLabel, initial = '', confirm, danger, onClose
 function PaymentModal({ invoice, onClose, onSaved }) {
   const [form, setForm] = useState({ amount: invoice.balanceDue, date: today(), method: 'bank_transfer', reference: '', note: '' });
   const [error, setError] = useState(null);
+  const v = useValidation([
+    { key: 'amount', label: 'Amount', type: 'number', required: true, min: 0.01, max: invoice.balanceDue },
+    { key: 'date', label: 'Date', type: 'date', required: true },
+    { key: 'reference', label: 'Reference', maxLength: 60 },
+    { key: 'note', label: 'Note', maxLength: 300 },
+  ], form);
+  const errors = { ...v.errors };
+  if (errors.amount === 'Amount must be at least 0.01') errors.amount = 'Amount must be more than 0';
+  if (errors.amount?.startsWith('Amount must be at most')) errors.amount = `Amount is more than the balance due (${money2(invoice.balanceDue, invoice.currency)})`;
+  if (!errors.date && form.date > today()) errors.date = 'Payment date cannot be in the future';
   const save = async () => {
+    if (!v.check() || form.date > today()) return;
     setError(null);
     try {
       onSaved(await post(`/invoices/${invoice.id}/payments`, { ...form, amount: Number(form.amount), reference: form.reference || undefined, note: form.note || undefined }));
@@ -102,15 +121,15 @@ function PaymentModal({ invoice, onClose, onSaved }) {
     <Modal title="Record payment" onClose={onClose} footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Save payment</button></>}>
       <ErrorAlert error={error} />
       <div className="form-grid">
-        <Field label={`Amount (balance ${money2(invoice.balanceDue, invoice.currency)})`}><input className="input" type="number" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
-        <Field label="Date"><input className="input" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+        <Field label={`Amount (balance ${money2(invoice.balanceDue, invoice.currency)})`} required error={errors.amount}><input className="input" type="number" min="0" step="any" aria-invalid={Boolean(errors.amount)} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+        <Field label="Date" required error={errors.date}><input className="input" type="date" max={today()} aria-invalid={Boolean(errors.date)} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         <Field label="Method">
           <select className="input" value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
             {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m === 'upi' ? 'UPI' : label(m)}</option>)}
           </select>
         </Field>
-        <Field label="Reference (UTR / cheque no.)"><input className="input" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
-        <Field label="Note" className="full"><input className="input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
+        <Field label="Reference (UTR / cheque no.)" error={errors.reference}><input className="input" aria-invalid={Boolean(errors.reference)} value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
+        <Field label="Note" className="full" error={errors.note}><input className="input" aria-invalid={Boolean(errors.note)} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
       </div>
     </Modal>
   );

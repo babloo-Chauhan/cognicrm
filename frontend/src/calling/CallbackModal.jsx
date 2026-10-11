@@ -13,14 +13,20 @@ export function CallbackModal({ phone, name, related, callback, onClose, onSaved
     notes: callback?.notes || '',
   }));
   const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [warning, setWarning] = useState(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const save = async () => {
     setError(null);
-    if (!form.at) return setError(new Error('Choose the date and time the customer asked for.'));
     const at = new Date(form.at);
-    if (at < new Date()) return setError(new Error('That time has already passed.'));
+    const problems = {};
+    if (!form.at) problems.at = 'Choose the date and time the customer asked for';
+    else if (Number.isNaN(at.getTime())) problems.at = 'Enter a valid date and time';
+    else if (at < new Date()) problems.at = 'That time has already passed — pick a future time';
+    if (form.notes.length > 1000) problems.notes = 'Keep the note under 1000 characters';
+    setFieldErrors(problems);
+    if (Object.keys(problems).length) return;
     try {
       const res = callback
         ? await patch(`/callbacks/${callback.id}`, { scheduledAt: at.toISOString(), priority: form.priority, notes: form.notes })
@@ -48,13 +54,13 @@ export function CallbackModal({ phone, name, related, callback, onClose, onSaved
       <div className="stack">
         <ErrorAlert error={error} />
         {warning && <div className="alert alert-warning">{warning}</div>}
-        <Field label="Customer asked to be called at"><input className="input" type="datetime-local" min={toLocalInput(new Date())} value={form.at} onChange={(e) => set('at', e.target.value)} /></Field>
+        <Field label="Customer asked to be called at" required error={fieldErrors.at}><input className="input" type="datetime-local" aria-invalid={Boolean(fieldErrors.at)} min={toLocalInput(new Date())} value={form.at} onChange={(e) => set('at', e.target.value)} /></Field>
         <Field label="Priority">
           <select className="input" value={form.priority} onChange={(e) => set('priority', e.target.value)}>
             {['low', 'normal', 'high', 'urgent'].map((p) => <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>)}
           </select>
         </Field>
-        <Field label="What did the customer say?"><textarea className="input" rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="e.g. Call after 6 pm, wants pricing for 10 users" /></Field>
+        <Field label="What did the customer say?" error={fieldErrors.notes}><textarea className="input" rows={2} aria-invalid={Boolean(fieldErrors.notes)} value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="e.g. Call after 6 pm, wants pricing for 10 users" /></Field>
       </div>
     </Modal>
   );

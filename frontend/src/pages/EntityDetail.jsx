@@ -8,7 +8,7 @@ import { Timeline } from '../components/Timeline.jsx';
 import { ContactActions } from '../calling/CallButton.jsx';
 import { useCalls } from '../calling/CallContext.jsx';
 import { OwnerName } from '../lib/team.js';
-import { ENTITY_CONFIG } from './entities.js';
+import { ENTITY_CONFIG, validateEntity } from './entities.js';
 import { useAuth } from '../lib/auth.jsx';
 import { EntityForm } from './EntityForm.jsx';
 import { CallbackModal } from '../calling/CallbackModal.jsx';
@@ -90,6 +90,7 @@ export function EntityDetail({ entity }) {
   const { data, loading, error, reload } = useAsync(() => get(`/${entity}/${id}`), [entity, id]);
   const [editing, setEditing] = useState(null);
   const [saveError, setSaveError] = useState(null);
+  const [showErrors, setShowErrors] = useState(false);
   const [aiResult, setAiResult] = useState(null);
   const [scheduling, setScheduling] = useState(false);
 
@@ -99,6 +100,9 @@ export function EntityDetail({ entity }) {
 
   const save = async () => {
     setSaveError(null);
+    const bad = Object.keys(validateEntity(entity, editing)).length > 0;
+    setShowErrors(bad);
+    if (bad) return;
     try {
       await patch(`/${entity}/${id}`, editing);
       setEditing(null);
@@ -190,9 +194,9 @@ export function EntityDetail({ entity }) {
       </div>
       {scheduling && <CallbackModal phone={data.phone} name={cfg.nameOf(data)} related={related} onClose={() => setScheduling(false)} />}
       {editing && (
-        <Modal title={`Edit ${cfg.singular}`} onClose={() => setEditing(null)} footer={<><button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Save</button></>}>
+        <Modal title={`Edit ${cfg.singular}`} onClose={() => { setEditing(null); setShowErrors(false); }} footer={<><button type="button" className="btn" onClick={() => { setEditing(null); setShowErrors(false); }}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Save</button></>}>
           <ErrorAlert error={saveError} />
-          <EntityForm entity={entity} value={editing} onChange={setEditing} />
+          <EntityForm entity={entity} value={editing} onChange={setEditing} showErrors={showErrors} />
         </Modal>
       )}
     </>

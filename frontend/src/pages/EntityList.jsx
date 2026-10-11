@@ -7,7 +7,7 @@ import { dateTime, label, money } from '../lib/format.js';
 import { DataTable, ErrorAlert, Loading, Modal, StatusBadge } from '../components/ui.jsx';
 import { useAsync } from '../lib/hooks.js';
 import { ContactActions } from '../calling/CallButton.jsx';
-import { ENTITY_CONFIG } from './entities.js';
+import { ENTITY_CONFIG, validateEntity } from './entities.js';
 import { EntityForm } from './EntityForm.jsx';
 import { ExportButtons, ImportModal } from './ImportExport.jsx';
 import { OwnerName, useTeam } from '../lib/team.js';
@@ -49,6 +49,7 @@ export function EntityList({ entity }) {
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState(null);
+  const [showErrors, setShowErrors] = useState(false);
   const { data, loading, error: loadError, reload } = useAsync(() => get(`/${entity}`, { q, ...filter, limit: 100 }), [entity, q, filter]);
 
   // e.g. /contacts?new=1&phone=… from the inbound call popup
@@ -61,8 +62,15 @@ export function EntityList({ entity }) {
     }
   }, [params, setParams]);
 
+  const invalid = (value) => {
+    const bad = Object.keys(validateEntity(entity, value)).length > 0;
+    setShowErrors(bad);
+    return bad;
+  };
+
   const save = async () => {
     setError(null);
+    if (invalid(creating)) return;
     try {
       const created = await post(`/${entity}`, creating);
       setCreating(null);
@@ -75,6 +83,7 @@ export function EntityList({ entity }) {
 
   const saveEdit = async () => {
     setError(null);
+    if (invalid(editing)) return;
     try {
       await patch(`/${entity}/${editing.id}`, editing);
       setEditing(null);
@@ -149,21 +158,21 @@ export function EntityList({ entity }) {
       {editing && (
         <Modal
           title={`Edit ${cfg.singular}`}
-          onClose={() => setEditing(null)}
-          footer={<><button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button><button type="button" className="btn btn-primary" onClick={saveEdit}>Save</button></>}
+          onClose={() => { setEditing(null); setShowErrors(false); }}
+          footer={<><button type="button" className="btn" onClick={() => { setEditing(null); setShowErrors(false); }}>Cancel</button><button type="button" className="btn btn-primary" onClick={saveEdit}>Save</button></>}
         >
           <ErrorAlert error={error} />
-          <EntityForm entity={entity} value={editing} onChange={setEditing} />
+          <EntityForm entity={entity} value={editing} onChange={setEditing} showErrors={showErrors} />
         </Modal>
       )}
       {creating && (
         <Modal
           title={`New ${cfg.singular}`}
-          onClose={() => setCreating(null)}
-          footer={<><button type="button" className="btn" onClick={() => setCreating(null)}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Create</button></>}
+          onClose={() => { setCreating(null); setShowErrors(false); }}
+          footer={<><button type="button" className="btn" onClick={() => { setCreating(null); setShowErrors(false); }}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Create</button></>}
         >
           <ErrorAlert error={error} />
-          <EntityForm entity={entity} value={creating} onChange={setCreating} />
+          <EntityForm entity={entity} value={creating} onChange={setCreating} showErrors={showErrors} />
         </Modal>
       )}
     </>

@@ -36,12 +36,12 @@ export function Modal({ title, description, onClose, children, footer, size }) {
   );
 }
 
-export function Field({ label: text, children, className = '', hint }) {
+export function Field({ label: text, children, className = '', hint, error, required }) {
   return (
     <label className={cn('field', className)}>
-      <span>{text}</span>
+      <span>{text}{required && <span className="text-destructive" aria-hidden="true"> *</span>}</span>
       {children}
-      {hint && <small className="text-xs text-muted-foreground">{hint}</small>}
+      {error ? <small className="field-error" role="alert">{error}</small> : hint && <small className="text-xs text-muted-foreground">{hint}</small>}
     </label>
   );
 }

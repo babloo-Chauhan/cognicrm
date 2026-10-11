@@ -114,9 +114,12 @@ export function ImportModal({ entity, title, onClose, onImported }) {
         </p>
         <div className="row">
           <span className="small muted">Template:</span>
-          <button type="button" className="btn btn-sm" onClick={() => download(`/${entity}/import/template`, { format: 'csv' }, `${entity}-template.csv`).catch(setError)}>CSV</button>
-          <button type="button" className="btn btn-sm" onClick={() => download(`/${entity}/import/template`, { format: 'xlsx' }, `${entity}-template.xlsx`).catch(setError)}>Excel</button>
+          <button type="button" className="btn btn-sm btn-primary" onClick={() => download(`/${entity}/import/template`, { format: 'xlsx' }, `${entity}-import-template.xlsx`).catch(setError)}>Excel (recommended)</button>
+          <button type="button" className="btn btn-sm" onClick={() => download(`/${entity}/import/template`, { format: 'csv' }, `${entity}-import-template.csv`).catch(setError)}>CSV</button>
         </div>
+        <p className="small muted" style={{ margin: 0 }}>
+          The Excel template marks required columns, has drop-down lists (status, source, owner…) and an Instructions sheet with an example for every column.
+        </p>
         <Field label="File">
           <input
             className="input"

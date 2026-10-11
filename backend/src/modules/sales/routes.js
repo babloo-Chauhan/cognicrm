@@ -10,6 +10,7 @@ import { requirePermission } from '../../middleware/auth.js';
 import { validate } from '../../middleware/common.js';
 import { audit } from '../../lib/audit.js';
 import { crudRouter } from '../crm/crud.js';
+import { FIELD_RULES } from '../crm/fieldRules.js';
 import * as sales from './service.js';
 import { calculate } from './calc.js';
 import { renderDocument } from './render.js';
@@ -19,7 +20,7 @@ const router = Router();
 // Reading needs sales:read; any change needs sales:write
 router.use(['/products', '/quotes', '/invoices', '/sales'], (req, res, next) => requirePermission(req.method === 'GET' ? 'sales:read' : 'sales:write')(req, res, next));
 
-router.use('/products', crudRouter(Product, { searchFields: ['name', 'sku', 'hsnSac'], filterFields: ['active'], defaultSort: { name: 1 } }));
+router.use('/products', crudRouter(Product, { rules: FIELD_RULES.products, searchFields: ['name', 'sku', 'hsnSac'], filterFields: ['active'], defaultSort: { name: 1 } }));
 
 // ---------------------------------------------------------------- validation
 
