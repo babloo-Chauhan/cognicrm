@@ -84,6 +84,8 @@ export const env = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY,
     model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
+    // Used when the main model is overloaded or its (free-tier) quota is used up; empty disables it.
+    fallbackModel: process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-flash-lite-latest',
   },
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY,

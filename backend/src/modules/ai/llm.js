@@ -102,6 +102,7 @@ export class GeminiLlm extends LlmProvider {
     super();
     this.apiKey = apiKey;
     this.model = model || env.gemini.model;
+    this.fallbackModel = env.gemini.fallbackModel;
     this.name = 'gemini';
   }
 
@@ -113,21 +114,7 @@ export class GeminiLlm extends LlmProvider {
       ...(tools?.length ? { tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.input_schema })) }] } : {}),
       ...(toolChoice?.type === 'tool' ? { toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [toolChoice.name] } } } : {}),
     };
-    let res;
-    let data;
-    // Gemini often answers 503 "high demand" / 429 for a few seconds; retry those briefly.
-    for (let attempt = 0; attempt <= GEMINI_RETRIES; attempt += 1) {
-      if (attempt) await new Promise((r) => { setTimeout(r, 1500 * attempt); });
-      res = await fetch(`${GEMINI_URL}/${encodeURIComponent(this.model)}:generateContent`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(60000),
-      });
-      data = await res.json().catch(() => ({}));
-      if (![429, 500, 503].includes(res.status)) break;
-    }
-    if (!res.ok) throw new AppError(502, `Gemini request failed: ${data.error?.message || res.statusText}`, 'AI_PROVIDER_ERROR');
+    const data = await this.generate(body);
     const candidate = data.candidates?.[0];
     if (!candidate) throw new AppError(502, `Gemini returned no answer${data.promptFeedback?.blockReason ? ` (${data.promptFeedback.blockReason})` : ''}`, 'AI_PROVIDER_ERROR');
 
@@ -150,6 +137,45 @@ export class GeminiLlm extends LlmProvider {
       maxTokens,
     });
     return res.toolCalls[0]?.input || null;
+  }
+
+  /** Calls the configured model; when it is overloaded or out of quota, tries the fallback model once. */
+  async generate(body) {
+    const models = [this.model, this.fallbackModel].filter((m, i, all) => m && all.indexOf(m) === i);
+    let failure;
+    for (const model of models) {
+      failure = await this.request(model, body);
+      if (failure.ok) return failure.data;
+      if (![429, 500, 503].includes(failure.status)) break;
+    }
+    const { status, data } = failure;
+    const message = data.error?.message || failure.statusText;
+    if (status === 429 && /quota/i.test(message)) {
+      // "Please retry in 6h24m4.24s." -> "6h24m"; seconds only -> "a minute"
+      const wait = message.match(/retry in ((?:\d+h)?(?:\d+m)?)/i)?.[1] || (/retry in/i.test(message) ? 'a minute' : '');
+      throw new AppError(502, `Gemini free quota is used up${wait ? ` (resets in about ${wait})` : ''}. Try again later, or enable billing in Google AI Studio for higher limits.`, 'AI_PROVIDER_ERROR');
+    }
+    if (status === 503) throw new AppError(502, 'Gemini is busy right now. Please try again in a minute.', 'AI_PROVIDER_ERROR');
+    throw new AppError(502, `Gemini request failed: ${message}`, 'AI_PROVIDER_ERROR');
+  }
+
+  async request(model, body) {
+    let res;
+    let data;
+    // Gemini often answers 503 "high demand" / 429 for a few seconds; retry those briefly.
+    // A used-up quota (429 mentioning quota) does not recover in seconds, so it is not retried.
+    for (let attempt = 0; attempt <= GEMINI_RETRIES; attempt += 1) {
+      if (attempt) await new Promise((r) => { setTimeout(r, 1500 * attempt); });
+      res = await fetch(`${GEMINI_URL}/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(60000),
+      });
+      data = await res.json().catch(() => ({}));
+      if (![429, 500, 503].includes(res.status) || /quota/i.test(data.error?.message || '')) break;
+    }
+    return { ok: res.ok, status: res.status, statusText: res.statusText, data };
   }
 }
 

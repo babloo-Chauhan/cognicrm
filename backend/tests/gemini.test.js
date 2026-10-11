@@ -84,6 +84,24 @@ describe('Gemini provider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('switches to the fallback model when the main one is out of quota, without retrying it', async () => {
+    const quota = { ok: false, status: 429, json: async () => ({ error: { message: 'You exceeded your current quota. Please retry in 6h24m4.24s.' } }) };
+    const replies = [quota, { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: 'lite' }] } }] }) }];
+    const fetchMock = vi.fn(async () => replies.shift());
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await new GeminiLlm({ apiKey: 'k', model: 'gemini-main' }).complete({ messages: [{ role: 'user', content: 'hi' }] });
+    expect(res.text).toBe('lite');
+    expect(fetchMock.mock.calls.map(([url]) => url.match(/models\/([^:]+)/)[1])).toEqual(['gemini-main', 'gemini-flash-lite-latest']);
+  });
+
+  it('explains a used-up quota in plain words', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 429, json: async () => ({ error: { message: 'You exceeded your current quota. Please retry in 6h24m4.24s.' } }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(new GeminiLlm({ apiKey: 'k' }).complete({ messages: [{ role: 'user', content: 'hi' }] }))
+      .rejects.toMatchObject({ status: 502, message: expect.stringMatching(/^Gemini free quota is used up \(resets in about 6h24m\)/) });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('a company can connect a Gemini key and it becomes the AI provider', async () => {
     setLlmOverride(undefined);
     const admin = await registerOrg();
