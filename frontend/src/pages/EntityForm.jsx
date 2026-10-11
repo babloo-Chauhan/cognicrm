@@ -3,6 +3,7 @@ import { get } from '../lib/api.js';
 import { label } from '../lib/format.js';
 import { Field } from '../components/ui.jsx';
 import { ENTITY_CONFIG, validateEntity } from './entities.js';
+import { phoneChars } from '../lib/validation.js';
 import { useTeam } from '../lib/team.js';
 
 /** Picks an active team member (lead owner, task assignee…). */
@@ -55,6 +56,9 @@ export function EntityForm({ entity, value, onChange, showErrors = false }) {
           className: 'input',
           required: f.required,
           'aria-invalid': error ? true : undefined,
+          // These are customers' details, not the user's: keep Chrome from offering its own name / address.
+          // Chrome ignores "off" for address autofill but skips fields whose token it does not recognise.
+          autoComplete: 'crm-record',
           onBlur: () => setTouched((t) => (t[f.key] ? t : { ...t, [f.key]: true })),
         };
         let input;
@@ -84,7 +88,8 @@ export function EntityForm({ entity, value, onChange, showErrors = false }) {
               {...common}
               type={type}
               value={toInput(f, v)}
-              onChange={(e) => set(f.key, f.type === 'number' ? (e.target.value === '' ? null : Number(e.target.value)) : f.type === 'datetime' && e.target.value ? new Date(e.target.value).toISOString() : e.target.value)}
+              maxLength={f.type === 'phone' ? 20 : undefined}
+              onChange={(e) => set(f.key, f.type === 'number' ? (e.target.value === '' ? null : Number(e.target.value)) : f.type === 'datetime' && e.target.value ? new Date(e.target.value).toISOString() : f.type === 'phone' ? phoneChars(e.target.value) : e.target.value)}
             />
           );
         }

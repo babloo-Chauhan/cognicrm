@@ -30,6 +30,9 @@ export const FORMATS = {
 const MAX_LENGTH = { textarea: 5000, email: 254, phone: 20 };
 const DEFAULT_MAX_LENGTH = 200;
 
+/** Keeps only characters a phone number can contain (digits, +, spaces, dashes, brackets), max 20. */
+export const phoneChars = (v) => String(v ?? '').replace(/[^\d+\s\-()]/g, '').slice(0, 20);
+
 export const isBlank = (v) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
 
 /** Returns an error message for one value, or null when it is fine. Blank optional values are fine. */
@@ -54,11 +57,12 @@ export function validateField(field, value) {
   if (typeof value !== 'string') return null; // selects, checkboxes, references
 
   const text = value.trim();
+  // The format message ("Enter a valid phone number…") says more than "too long", so it comes first
+  const format = FORMATS[field.format] || FORMATS[type];
+  if (format && !format.test(text)) return format.message;
   const maxLength = field.maxLength ?? MAX_LENGTH[type] ?? DEFAULT_MAX_LENGTH;
   if (text.length > maxLength) return `${name} is too long (max ${maxLength} characters)`;
   if (field.minLength && text.length < field.minLength) return `${name} must be at least ${field.minLength} characters`;
-  const format = FORMATS[field.format] || FORMATS[type];
-  if (format && !format.test(text)) return format.message;
   return null;
 }
 

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { http, registerOrg, useDatabase } from './helpers.js';
-import { firstError, validateField, validateForm } from '../src/lib/validation.js';
+import { firstError, phoneChars, validateField, validateForm } from '../src/lib/validation.js';
 
 useDatabase();
 
@@ -26,6 +26,10 @@ describe('shared form rules', () => {
     expect(validateField(phone, '08416800849')).toBeNull();
     expect(validateField(phone, '98765')).toMatch(/valid phone/);
     expect(validateField(phone, '98765abcde')).toMatch(/valid phone/);
+    // A long junk value gets the phone message, not "too long"
+    expect(validateField(phone, '56565655665565656fhfh')).toMatch(/valid phone/);
+    expect(phoneChars('56565655665565656fhfh')).toBe('56565655665565656');
+    expect(phoneChars('+91 (987) 654-3210')).toBe('+91 (987) 654-3210');
 
     expect(validateField({ label: 'Email', type: 'email' }, 'a@b.co')).toBeNull();
     expect(validateField({ label: 'Email', type: 'email' }, 'rahul@gmail')).toMatch(/valid email/);

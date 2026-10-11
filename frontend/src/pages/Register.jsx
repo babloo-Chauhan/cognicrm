@@ -9,7 +9,7 @@ import { AuthShell } from '../components/AuthShell.jsx';
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '../lib/toast.js';
-import { FORMATS } from '../lib/validation.js';
+import { FORMATS, phoneChars } from '../lib/validation.js';
 
 const STEPS = ['Company', 'Admin', 'Plan', 'Trial / payment', 'Done'];
 const INDUSTRIES = ['IT & Software', 'Retail', 'Manufacturing', 'Real Estate', 'Education', 'Healthcare', 'Finance', 'Services', 'Other'];
@@ -55,7 +55,7 @@ export function Register() {
   const [notice, setNotice] = useState(null);
   const [result, setResult] = useState(null);
 
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const set = (k) => (e) => setForm({ ...form, [k]: k === 'phone' ? phoneChars(e.target.value) : e.target.value });
   const errors = touched ? stepErrors(step, form) : {};
   const plan = plans.data?.items.find((p) => p.code === planCode);
   const providers = plans.data?.providers || [];

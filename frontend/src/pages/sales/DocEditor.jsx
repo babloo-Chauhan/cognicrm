@@ -4,7 +4,7 @@ import { get, patch, post } from '../../lib/api.js';
 import { ErrorAlert, Field, Loading } from '../../components/ui.jsx';
 import { RefSelect } from '../EntityForm.jsx';
 import { TotalsTable } from './common.jsx';
-import { validateField, validateForm } from '../../lib/validation.js';
+import { phoneChars, validateField, validateForm } from '../../lib/validation.js';
 
 const EMPTY_ITEM = { productId: null, name: '', description: '', hsnSac: '', unit: '', quantity: 1, unitPrice: 0, discountPercent: 0, taxRate: null };
 const CUSTOMER_FIELDS = [
@@ -269,7 +269,7 @@ export function DocEditor({ kind }) {
               <Field label="Contact"><RefSelect entity="contacts" value={doc.contactId} onChange={(v) => linkTo('contactId', v)} /></Field>
               <Field label="Account"><RefSelect entity="accounts" value={doc.accountId} onChange={(v) => linkTo('accountId', v)} /></Field>
               {CUSTOMER_FIELDS.map(([k, l]) => (
-                <Field key={k} label={l} error={errors[`customer.${k}`]}><input className="input" aria-invalid={Boolean(errors[`customer.${k}`])} value={doc.customer?.[k] || ''} onChange={(e) => setCustomer(k, e.target.value)} /></Field>
+                <Field key={k} label={l} error={errors[`customer.${k}`]}><input className="input" aria-invalid={Boolean(errors[`customer.${k}`])} autoComplete="crm-record" maxLength={k === 'phone' ? 20 : undefined} value={doc.customer?.[k] || ''} onChange={(e) => setCustomer(k, k === 'phone' ? phoneChars(e.target.value) : e.target.value)} /></Field>
               ))}
               <Field label="Billing address" error={errors['customer.address']}><textarea className="input" aria-invalid={Boolean(errors['customer.address'])} value={doc.customer?.address || ''} onChange={(e) => setCustomer('address', e.target.value)} /></Field>
               {settings.state ? <p className="small muted" style={{ margin: 0 }}>Your state: {settings.state}. A different customer state uses IGST.</p>

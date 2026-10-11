@@ -5,7 +5,7 @@ import { DataTable, ErrorAlert, Field, StatusBadge } from '../../components/ui.j
 import { useAsync } from '../../lib/hooks.js';
 import { useCalls } from '../../calling/CallContext.jsx';
 import { CallButton } from '../../calling/CallButton.jsx';
-import { FORMATS } from '../../lib/validation.js';
+import { FORMATS, phoneChars } from '../../lib/validation.js';
 
 // Flags a number that can never become valid (letters, too many digits) — not one still being typed
 const badNumber = (n) => Boolean(n) && (/[^\d\s+\-().]/.test(n) || n.replace(/\D/g, '').length > 15);
@@ -108,7 +108,7 @@ export function Dialer() {
         <div className="card-body stack">
           <Field label="Phone number" error={badNumber(number) ? FORMATS.phone.message : null}>
             <div className="row" style={{ flexWrap: 'nowrap' }}>
-              <input className="input mono" type="tel" aria-invalid={badNumber(number)} value={number} onChange={(e) => setNumber(e.target.value)} placeholder="+91 98765 43210" onKeyDown={(e) => e.key === 'Enter' && FORMATS.phone.test(number) && dial(number, { source: 'manual' })} />
+              <input className="input mono" type="tel" aria-invalid={badNumber(number)} value={number} maxLength={20} onChange={(e) => setNumber(phoneChars(e.target.value))} placeholder="+91 98765 43210" onKeyDown={(e) => e.key === 'Enter' && FORMATS.phone.test(number) && dial(number, { source: 'manual' })} />
               <button type="button" className="btn btn-success" disabled={!FORMATS.phone.test(number)} onClick={() => dial(number, { source: 'manual' })}>📞 Call</button>
             </div>
           </Field>

@@ -6,7 +6,7 @@ import { dateTime, label } from '../lib/format.js';
 import { DataTable, ErrorAlert, Field, Loading, Modal, Tabs } from '../components/ui.jsx';
 import { useAsync } from '../lib/hooks.js';
 import { CompanySettings } from './CompanySettings.jsx';
-import { validateForm } from '../lib/validation.js';
+import { phoneChars, validateForm } from '../lib/validation.js';
 import { useValidation } from '../lib/useValidation.js';
 
 function Templates() {
@@ -161,7 +161,7 @@ function Billing() {
   };
   const input = (k, l, type, val, onChange, errorKey = k) => (
     <Field key={k} label={l} error={errors[errorKey]}>
-      <input className="input" type={type || 'text'} disabled={!editable} aria-invalid={Boolean(errors[errorKey])} value={val ?? ''} onChange={(e) => onChange(k, type === 'number' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value)} />
+      <input className="input" type={type || 'text'} disabled={!editable} aria-invalid={Boolean(errors[errorKey])} value={val ?? ''} maxLength={type === 'tel' ? 20 : undefined} onChange={(e) => onChange(k, type === 'number' ? (e.target.value === '' ? null : Number(e.target.value)) : type === 'tel' ? phoneChars(e.target.value) : e.target.value)} />
     </Field>
   );
   return (

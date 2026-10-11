@@ -3,7 +3,7 @@ import { del, get, patch, upload } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useAsync } from '../lib/hooks.js';
 import { ErrorAlert, Field, Skeleton } from '../components/ui.jsx';
-import { validateForm } from '../lib/validation.js';
+import { phoneChars, validateForm } from '../lib/validation.js';
 import { toast } from '../lib/toast.js';
 
 const TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'Australia/Sydney', 'UTC'];
@@ -143,7 +143,7 @@ export function CompanySettings() {
         <Field label="Company name" required error={errors.name}>{input(p.name, (v) => setP('name', v), {}, 'name')}</Field>
         <Field label="Legal name" error={errors.legalName}>{input(p.legalName, (v) => setP('legalName', v), {}, 'legalName')}</Field>
         <Field label="Email" error={errors.email}>{input(p.email, (v) => setP('email', v), { type: 'email' }, 'email')}</Field>
-        <Field label="Phone" error={errors.phone}>{input(p.phone, (v) => setP('phone', v), {}, 'phone')}</Field>
+        <Field label="Phone" error={errors.phone}>{input(p.phone, (v) => setP('phone', phoneChars(v)), { type: 'tel', maxLength: 20 }, 'phone')}</Field>
         <Field label="Website" error={errors.website}>{input(p.website, (v) => setP('website', v), { placeholder: 'https://' }, 'website')}</Field>
         <Field label="GST / tax number" error={errors.taxId}>{input(p.taxId, (v) => setP('taxId', v), {}, 'taxId')}</Field>
         <Field label="Industry" error={errors.industry}>{input(p.industry, (v) => setP('industry', v), {}, 'industry')}</Field>

@@ -9,6 +9,7 @@ import {
 import { toast } from '../lib/toast.js';
 import { ResetPasswordDialog } from '../components/PasswordDialogs.jsx';
 import { useValidation } from '../lib/useValidation.js';
+import { phoneChars } from '../lib/validation.js';
 
 function UserModal({ initial, roles, onClose, onSaved }) {
   const { can, user: me } = useAuth();
@@ -61,7 +62,7 @@ function UserModal({ initial, roles, onClose, onSaved }) {
         </Field>
         <Field label="Department" error={v.errors.department}><input className="input" aria-invalid={Boolean(v.errors.department)} value={form.department || ''} disabled={!manage && Boolean(form.id)} onChange={set('department')} /></Field>
         <Field label="Designation" error={v.errors.designation}><input className="input" aria-invalid={Boolean(v.errors.designation)} value={form.designation || ''} disabled={!manage && Boolean(form.id)} onChange={set('designation')} /></Field>
-        <Field label="Phone (for bridge calls)" error={v.errors.phone}><input className="input" type="tel" aria-invalid={Boolean(v.errors.phone)} value={form.phone || ''} onChange={set('phone')} /></Field>
+        <Field label="Phone (for bridge calls)" error={v.errors.phone}><input className="input" type="tel" aria-invalid={Boolean(v.errors.phone)} value={form.phone || ''} maxLength={20} onChange={(e) => setForm({ ...form, phone: phoneChars(e.target.value) })} /></Field>
         {form.id && manage && form.id !== me.id && <label className="checkbox"><input type="checkbox" checked={form.active !== false} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Active</label>}
       </div>
     </Modal>
