@@ -98,6 +98,23 @@ PIN code, HSN/SAC, UPI, bank account, number ranges and max lengths.
 - Import templates: the Excel template has highlighted required columns, header notes, drop-downs (status, source,
   company size, Yes/No, team emails) from a hidden Lists sheet and an Instructions sheet with an example per column.
 
+### Scale, caching and load ✅
+
+Tested with 3.5 lakh records in one company (`backend/scripts/seed-bulk.js`, `perf-endpoints.js`, `loadtest.js`).
+
+- Pagination: every list is server-paginated (`lib/pagination.js`: page ≥ 1, limit ≤ 200, sort only on indexed
+  fields, `_id` tie-breaker for stable pages); web lists use `Pager`, the app loads more on scroll.
+- Search: leads, contacts, accounts and deals keep word-prefix tokens (`models/search.js`, `{ org, _search,
+  createdAt, _id }` index) — "shar", "rahul shar", "98765" answer in ~10 ms on 1 lakh leads; "contains" fallback
+  is time-boxed. Tokens are backfilled at startup for older records.
+- Cache (`lib/cache.js`): dashboard, analytics, sales overview, pipeline board and list totals; per-company
+  version bumped by every CRM write, so numbers are fresh right after a change. In memory, or Redis with
+  `REDIS_URL` (shared by several instances; falls back to memory if Redis goes down).
+- Rate limits: per signed-in session (600/min) and per account for sign-in (30 per 15 min); per-IP limits are only
+  a flood guard, so one office IP never blocks its colleagues. Counters in Redis when configured.
+- Measured locally (one Node process): mixed traffic ≈ 230 req/s, p50 76 ms at 20 concurrent, 0 errors at 100.
+- Log rotation with pm2-logrotate on deploy.
+
 ## Known limits
 
 - Mobile push on Android uses FCM directly: `app/google-services.json` (Firebase project `crmcogni`) in the app,

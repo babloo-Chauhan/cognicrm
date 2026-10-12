@@ -2,7 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import mongoose from 'mongoose';
-import rateLimit from 'express-rate-limit';
+import { createHash } from 'node:crypto';
+import rateLimit, { ipKeyGenerator, MemoryStore } from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
+import { redisClient, redisIsReady } from './lib/cache.js';
 import { env } from './config/env.js';
 import {
   apiUsage, authenticate, moduleGuard, tenantGuard,
@@ -27,6 +30,37 @@ import { registerListeners } from './listeners.js';
 
 const DB_STATES = ['disconnected', 'connected', 'connecting', 'disconnecting'];
 
+/**
+ * Rate-limit counters in Redis, falling back to this process's memory while Redis is unreachable, so an
+ * outage neither blocks requests nor writes an error line for every request.
+ */
+class FallbackStore {
+  constructor(redisStore) {
+    this.redis = redisStore;
+    this.memory = new MemoryStore();
+  }
+
+  init(options) {
+    this.redis.init?.(options);
+    this.memory.init(options);
+  }
+
+  async use(method, key) {
+    if (redisIsReady()) {
+      try {
+        return await this.redis[method](key);
+      } catch { /* fall through to memory */ }
+    }
+    return this.memory[method](key);
+  }
+
+  increment(key) { return this.use('increment', key); }
+
+  decrement(key) { return this.use('decrement', key); }
+
+  resetKey(key) { return this.use('resetKey', key); }
+}
+
 export function createApp() {
   registerListeners();
   const app = express();
@@ -46,15 +80,38 @@ export function createApp() {
   });
 
   const api = express.Router();
-  const apiLimiter = rateLimit({ windowMs: 60000, limit: env.isTest ? 10000 : 600, standardHeaders: true, legacyHeaders: false });
-  const authLimiter = rateLimit({ windowMs: 15 * 60000, limit: env.isTest ? 10000 : 30, standardHeaders: true, legacyHeaders: false });
+  // Rate limits. A whole office usually shares one public IP, so the normal API limit is per signed-in
+  // session (bearer token) and sign-in attempts are limited per account; per-IP limits are only a flood guard.
+  const ip = (req) => ipKeyGenerator(req.ip);
+  const session = (req) => {
+    const auth = req.headers.authorization;
+    return auth?.startsWith('Bearer ') ? `s:${createHash('sha256').update(auth.slice(7)).digest('base64url').slice(0, 22)}` : `ip:${ip(req)}`;
+  };
+  const account = (req) => `${ip(req)}:${String(req.body?.email || req.body?.employeeId || '').trim().toLowerCase()}`;
+  // With Redis the counters are shared by all API instances; without it each instance counts on its own
+  const redis = redisClient();
+  let storeNo = 0;
+  const limiterOptions = (windowMs, limit, keyGenerator) => ({
+    windowMs, limit: env.isTest ? 100000 : limit, keyGenerator, standardHeaders: true, legacyHeaders: false,
+    ...(redis ? { store: new FallbackStore(new RedisStore({ prefix: `crm:rl${(storeNo += 1)}:`, sendCommand: (...args) => redis.sendCommand(args) })) } : {}),
+    passOnStoreError: true,
+  });
+  const limiter = (windowMs, limit, keyGenerator) => rateLimit(limiterOptions(windowMs, limit, keyGenerator));
+  const ipFloodLimiter = limiter(60000, env.rateLimit.ipPerMinute, ip);
+  const AUTH_PATHS = ['/auth/login', '/auth/register', '/platform/auth/login', '/auth/switch-company'];
+  // Sign-in routes have their own per-account limits below; counting them here too would let one
+  // person's wrong passwords block everyone else signing in from the same office IP
+  const apiLimiter = rateLimit({ ...limiterOptions(60000, env.rateLimit.perMinute, session), skip: (req) => AUTH_PATHS.includes(req.path) });
+  const authLimiter = limiter(15 * 60000, 30, account); // wrong-password guessing on one account
+  const authIpLimiter = limiter(15 * 60000, 600, ip); // many accounts from one IP
 
   // Public endpoints: provider webhooks (signature validated), web chat widget, signed recording links
   api.use(publicBillingRouter); // plan catalog + payment webhooks
   api.use(webhookRoutes);
   api.use(webchatRouter);
   api.use(recordingPublicRoutes);
-  api.use(['/auth/login', '/auth/register', '/platform/auth/login', '/auth/switch-company'], authLimiter);
+  api.use(ipFloodLimiter);
+  api.use(AUTH_PATHS, authIpLimiter, authLimiter);
   api.use(apiLimiter);
   api.use(publicAuthRouter);
   api.use(platformPublicRouter);

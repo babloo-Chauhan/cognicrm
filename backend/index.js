@@ -8,6 +8,8 @@ import { log } from './src/lib/logger.js';
 import { runSaasMigrations } from './src/modules/saas/migrate.js';
 import { flushUsage } from './src/modules/saas/usage.js';
 import { ensureSuperAdmin } from './src/modules/platform/auth.js';
+import { backfillSearch } from './src/models/search.js';
+import { Account, Contact, Deal, Lead } from './src/models/index.js';
 
 async function main() {
   await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 15000 });
@@ -24,6 +26,12 @@ async function main() {
 
   server.listen(env.port, () => {
     log.info('server.listening', { port: env.port, environment: env.nodeEnv });
+    // Search tokens for records saved before fast search existed — in the background, in batches
+    (async () => {
+      for (const Model of [Lead, Contact, Account, Deal]) {
+        await backfillSearch(Model, { log: (model, count) => log.info('search.backfilled', { model, count }) });
+      }
+    })().catch((err) => log.error('search.backfill_failed', { error: err.message }));
   });
   server.on('error', (err) => {
     log.error('server.error', { error: err.message, code: err.code });

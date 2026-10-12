@@ -28,3 +28,13 @@ export function useAsync(loader, deps = []) {
     setData: (data) => setState((s) => ({ ...s, data })),
   };
 }
+
+/** `value` after it has stopped changing for `ms` — e.g. search text, so typing sends one request, not one per key. */
+export function useDebounced(value, ms = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}

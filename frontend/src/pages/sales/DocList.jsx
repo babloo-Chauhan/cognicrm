@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { get } from '../../lib/api.js';
 import { label } from '../../lib/format.js';
-import { DataTable, ErrorAlert, Loading, StatusBadge } from '../../components/ui.jsx';
-import { useAsync } from '../../lib/hooks.js';
+import { DataTable, ErrorAlert, Loading, Pager, StatusBadge } from '../../components/ui.jsx';
+import { useAsync, useDebounced } from '../../lib/hooks.js';
 import { customerName, docNumber, INVOICE_STATUSES, money2, QUOTE_STATUSES } from './salesUtils.js';
 
+const PAGE_SIZE = 50;
 const date = (v) => (v ? new Date(v).toLocaleDateString() : '—');
 
 /** Quotation or invoice list. Also used embedded on deal / contact / account pages through `filter`. */
@@ -15,7 +16,14 @@ export function DocList({ kind, filter, embedded = false }) {
   const [q, setQ] = useState('');
   const [params] = useSearchParams();
   const [status, setStatus] = useState(embedded ? '' : params.get('status') || '');
-  const { data, loading, error } = useAsync(() => get(`/${path}`, { q, status, ...filter, limit: 100 }), [path, q, status, JSON.stringify(filter)]);
+  const search = useDebounced(q.trim());
+  const [page, setPage] = useState({ n: 1, key: '' });
+  const pageKey = JSON.stringify([path, search, status, filter]);
+  const pageNo = page.key === pageKey ? page.n : 1;
+  const { data, loading, error } = useAsync(
+    () => get(`/${path}`, { q: search || undefined, status: status || undefined, ...filter, page: pageNo, limit: PAGE_SIZE }),
+    [pageKey, pageNo],
+  );
 
   const columns = [
     { key: 'number', label: kind === 'quote' ? 'Quotation' : 'Invoice', render: (r) => <strong>{docNumber(r, kind)}</strong> },
@@ -29,7 +37,10 @@ export function DocList({ kind, filter, embedded = false }) {
   ];
 
   const table = loading && !data ? <Loading /> : (
-    <DataTable columns={columns} rows={data?.items} onRowClick={(r) => navigate(`/${path}/${r.id}`)} empty={kind === 'quote' ? 'No quotations yet.' : 'No invoices yet.'} />
+    <>
+      <DataTable columns={columns} rows={data?.items} onRowClick={(r) => navigate(`/${path}/${r.id}`)} empty={search || status ? 'Nothing matches your search or filter.' : kind === 'quote' ? 'No quotations yet.' : 'No invoices yet.'} />
+      <Pager page={pageNo} pageSize={PAGE_SIZE} total={data?.total} loading={loading} onPage={(n) => setPage({ n, key: pageKey })} />
+    </>
   );
   if (embedded) return <><ErrorAlert error={error} />{table}</>;
 
@@ -37,7 +48,7 @@ export function DocList({ kind, filter, embedded = false }) {
   return (
     <>
       <div className="page-header">
-        <div><h1>{kind === 'quote' ? 'Quotations' : 'Invoices'}</h1>{data && <p>{data.total} total</p>}</div>
+        <div><h1>{kind === 'quote' ? 'Quotations' : 'Invoices'}</h1>{data && <p>{data.total.toLocaleString('en-IN')} total</p>}</div>
         <div className="row">
           <input className="input" style={{ width: 220 }} placeholder="Search number or customer…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
           <select className="input" style={{ width: 160 }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">

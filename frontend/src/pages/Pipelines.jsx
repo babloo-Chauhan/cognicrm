@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { del, get, patch, post } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useAsync } from '../lib/hooks.js';
@@ -78,12 +79,13 @@ function PipelineModal({ initial, onClose, onSaved }) {
 export function Pipelines() {
   const { can } = useAuth();
   const pipelines = useAsync(() => get('/pipelines'), []);
-  const deals = useAsync(() => get('/deals', { limit: 200 }), []);
+  // Counts and totals per stage come from the server, so they are right with any number of deals
+  const board = useAsync(() => get('/pipelines/board'), []);
   const [form, setForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const manage = can('pipelines:manage');
   if (!pipelines.data) return pipelines.error ? <ErrorAlert error={pipelines.error} /> : <Skeleton />;
-  const dealsOf = (p, stage) => (deals.data?.items || []).filter((d) => (String(d.pipelineId || '') === p.id || (!d.pipelineId && p.isDefault)) && d.stage === stage);
+  const cellOf = (p, stage) => (board.data?.items || []).find((c) => c.pipelineId === p.id && c.stage === stage) || { count: 0, value: 0, recent: [] };
   return (
     <>
       <div className="page-header">
@@ -105,12 +107,13 @@ export function Pipelines() {
             <div className="card-body" style={{ overflowX: 'auto' }}>
               <div className="row" style={{ flexWrap: 'nowrap', alignItems: 'stretch' }}>
                 {p.stages.map((s) => {
-                  const list = dealsOf(p, s.key);
+                  const cell = cellOf(p, s.key);
                   return (
                     <div key={s.key} style={{ minWidth: 160, flex: 1, background: 'var(--surface-2)', borderRadius: 8, padding: 10 }}>
                       <div className="small" style={{ fontWeight: 600 }}>{s.label} <span className="muted">· {s.probability}%</span></div>
-                      <div className="small muted">{list.length} deals · {money(list.reduce((a, d) => a + (d.value || 0), 0))}</div>
-                      {list.slice(0, 5).map((d) => <div key={d.id} className="small" style={{ marginTop: 6 }}>{d.name}</div>)}
+                      <div className="small muted">{board.data ? `${cell.count.toLocaleString('en-IN')} deals · ${money(cell.value)}` : 'Loading…'}</div>
+                      {cell.recent.map((d) => <Link key={d.id} to={`/deals/${d.id}`} className="small" style={{ display: 'block', marginTop: 6 }}>{d.name}</Link>)}
+                      {cell.count > cell.recent.length && <div className="small muted" style={{ marginTop: 6 }}>+{(cell.count - cell.recent.length).toLocaleString('en-IN')} more</div>}
                     </div>
                   );
                 })}
@@ -119,7 +122,7 @@ export function Pipelines() {
           </div>
         ))}
       </div>
-      {form && <PipelineModal initial={form} onClose={() => setForm(null)} onSaved={() => { setForm(null); pipelines.reload(); }} />}
+      {form && <PipelineModal initial={form} onClose={() => setForm(null)} onSaved={() => { setForm(null); pipelines.reload(); board.reload(); }} />}
       {confirm && <ConfirmDialog title="Delete pipeline" message={`Delete ${confirm.name}? Pipelines with deals cannot be deleted.`} danger confirmLabel="Delete" onConfirm={async () => { await del(`/pipelines/${confirm.id}`); pipelines.reload(); }} onClose={() => setConfirm(null)} />}
     </>
   );

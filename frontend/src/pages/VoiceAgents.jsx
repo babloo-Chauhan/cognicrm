@@ -58,7 +58,7 @@ function Editor({ agent, onSaved }) {
   const queues = useAsync(() => get('/call-queues'), []);
   const numbers = useAsync(() => get('/phone-numbers'), []);
   const sessions = useAsync(() => (agent.id ? get(`/voice-agents/${agent.id}/sessions`) : Promise.resolve({ items: [] })), [agent.id]);
-  const set = (k, v) => setA({ ...a, [k]: v });
+  const set = (k, v) => setA((x) => ({ ...x, [k]: v }));
   const toggle = (k, v) => set(k, (a[k] || []).includes(v) ? a[k].filter((x) => x !== v) : [...(a[k] || []), v]);
 
   const [shown, setShown] = useState(false);

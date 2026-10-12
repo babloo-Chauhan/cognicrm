@@ -4,6 +4,7 @@ import {
 } from '../../models/index.js';
 import { hasPermission } from '../../middleware/auth.js';
 import { defaultPipeline } from './pipelines.js';
+import { cached } from '../../lib/cache.js';
 
 const router = Router();
 
@@ -12,6 +13,11 @@ const router = Router();
  * so numbers are always tenant-specific. Sections the user cannot read are omitted.
  */
 router.get('/dashboard', async (req, res) => {
+  // Per user: sections depend on the user's permissions. Fresh after any CRM write (bumpCompany), else 60 s.
+  res.json(await cached(req.orgId, `dashboard:${req.user._id}`, 60, () => buildDashboard(req)));
+});
+
+async function buildDashboard(req) {
   const org = { organizationId: req.orgId };
   const can = (p) => hasPermission(req.user, p);
   const now = new Date();
@@ -23,10 +29,12 @@ router.get('/dashboard', async (req, res) => {
   const on = (m) => modules.includes(m);
 
   const [leadStats, customers, dealStats, pipeline, pendingTasks, todaysActivities, upcomingMeetings, paid] = await Promise.all([
-    on('leads') && can('leads:read') ? Lead.aggregate([
-      { $match: org },
-      { $group: { _id: null, total: { $sum: 1 }, newThisMonth: { $sum: { $cond: [{ $gte: ['$createdAt', monthStart] }, 1, 0] } }, converted: { $sum: { $cond: [{ $in: ['$status', ['converted', 'won']] }, 1, 0] } } } },
-    ]) : null,
+    // Three index-backed counts instead of reading every lead
+    on('leads') && can('leads:read') ? Promise.all([
+      Lead.countDocuments(org),
+      Lead.countDocuments({ ...org, createdAt: { $gte: monthStart } }),
+      Lead.countDocuments({ ...org, status: { $in: ['converted', 'won'] } }),
+    ]).then(([total, newThisMonth, converted]) => [{ total, newThisMonth, converted }]) : null,
     on('customers') && can('contacts:read') ? Promise.all([Contact.countDocuments(org), Account.countDocuments(org)]) : null,
     on('deals') && can('deals:read') ? Deal.aggregate([
       { $match: org },
@@ -57,7 +65,7 @@ router.get('/dashboard', async (req, res) => {
     stages = def.stages.map((s) => ({ key: s.key, label: s.label, count: byKey[s.key]?.count || 0, value: byKey[s.key]?.value || 0 }));
   }
   const closed = deals.won + deals.lost;
-  res.json({
+  return {
     leads: leadStats ? { total: leads.total, newThisMonth: leads.newThisMonth, converted: leads.converted } : null,
     customers: customers ? { contacts: customers[0], accounts: customers[1], total: customers[0] + customers[1] } : null,
     deals: dealStats ? { total: deals.total, won: deals.won, lost: deals.lost, open: deals.total - closed, openValue: deals.openValue } : null,
@@ -70,7 +78,7 @@ router.get('/dashboard', async (req, res) => {
       leads: leads.total ? Math.round((leads.converted / leads.total) * 1000) / 10 : 0,
       deals: closed ? Math.round((deals.won / closed) * 1000) / 10 : 0,
     },
-  });
-});
+  };
+}
 
 export default router;

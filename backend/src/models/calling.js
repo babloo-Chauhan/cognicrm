@@ -91,6 +91,7 @@ const callSchema = new Schema({
   metadata: Schema.Types.Mixed,
 });
 callSchema.index({ organizationId: 1, startedAt: -1 });
+callSchema.index({ organizationId: 1, agentId: 1, startedAt: -1 });
 export const Call = model('Call', callSchema);
 
 const callParticipantSchema = new Schema({

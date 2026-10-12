@@ -19,6 +19,7 @@ import {
   sendDtmf, transferCall,
 } from './service.js';
 import { applyDisposition, dispositionSchema } from './wrapup.js';
+import { pageParams } from '../../lib/pagination.js';
 
 const router = Router();
 
@@ -100,8 +101,7 @@ router.post('/calls', requirePermission('calls:make'), validate(createCallSchema
 
 router.get('/calls', async (req, res) => {
   const filter = callFilter(req);
-  const limit = Math.min(Number(req.query.limit) || 50, 200);
-  const page = Math.max(Number(req.query.page) || 1, 1);
+  const { page, limit } = pageParams(req.query);
   const [items, total, org] = await Promise.all([
     Call.find(filter).sort({ startedAt: -1 }).skip((page - 1) * limit).limit(limit).populate('agentId', 'name'),
     Call.countDocuments(filter),

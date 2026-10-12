@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { get, patch, post } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { dateTime, label } from '../lib/format.js';
-import { DataTable, ErrorAlert, Field, Loading, Modal, Tabs } from '../components/ui.jsx';
+import { DataTable, ErrorAlert, Field, Loading, Modal, Pager, Tabs } from '../components/ui.jsx';
 import { useAsync } from '../lib/hooks.js';
 import { CompanySettings } from './CompanySettings.jsx';
 import { phoneChars, validateForm } from '../lib/validation.js';
@@ -85,10 +85,12 @@ function WebChat() {
 }
 
 function AuditLog() {
-  const { data, error } = useAsync(() => get('/audit-logs', { limit: 200 }), []);
+  const [page, setPage] = useState(1);
+  const { data, error, loading } = useAsync(() => get('/audit-logs', { page, limit: 100 }), [page]);
   return (
     <div className="card">
       <ErrorAlert error={error} />
+      {loading && !data && <Loading />}
       <DataTable rows={data?.items} columns={[
         { key: 'createdAt', label: 'When', render: (a) => dateTime(a.createdAt) },
         { key: 'user', label: 'User', render: (a) => a.userId?.name || '—' },
@@ -96,6 +98,7 @@ function AuditLog() {
         { key: 'resource', label: 'Resource', render: (a) => (a.resourceType ? `${a.resourceType} ${a.resourceId || ''}` : '—') },
         { key: 'ip', label: 'IP' },
       ]} />
+      <Pager page={page} pageSize={100} total={data?.total} loading={loading} onPage={setPage} />
     </div>
   );
 }
@@ -136,8 +139,8 @@ function Billing() {
   if (error) return <ErrorAlert error={error} />;
   if (!value) return <Loading />;
   const editable = can('settings:manage');
-  const set = (k, v) => { setSaved(false); setForm({ ...value, [k]: v }); };
-  const setBank = (k, v) => { setSaved(false); setForm({ ...value, bank: { ...value.bank, [k]: v } }); };
+  const set = (k, v) => { setSaved(false); setForm((f) => ({ ...(f || data), [k]: v })); };
+  const setBank = (k, v) => { setSaved(false); setForm((f) => { const cur = f || data; return { ...cur, bank: { ...cur.bank, [k]: v } }; }); };
   const allErrors = {
     ...validateForm([...rules(BILLING_FIELDS), ...rules(DEFAULT_FIELDS), ...TEXT_RULES], value),
     ...Object.fromEntries(Object.entries(validateForm(rules(BANK_FIELDS), value.bank || {})).map(([k, m]) => [`bank.${k}`, m])),

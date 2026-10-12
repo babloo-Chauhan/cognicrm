@@ -178,6 +178,15 @@ cd "$APP_DIR"
 pm2 start deploy/ecosystem.config.cjs --update-env
 pm2 save
 
+# Log rotation: the API writes one JSON line per request, which fills the disk over months without it.
+# pm2-logrotate is per pm2 daemon (it also rotates the other apps' pm2 logs on this box); installed once.
+if ! pm2 ls 2>/dev/null | grep -q pm2-logrotate; then
+  pm2 install pm2-logrotate >/dev/null 2>&1 || echo "   (could not install pm2-logrotate — rotate ~/.pm2/logs manually)"
+  pm2 set pm2-logrotate:max_size 50M >/dev/null 2>&1 || true
+  pm2 set pm2-logrotate:retain 10 >/dev/null 2>&1 || true
+  pm2 set pm2-logrotate:compress true >/dev/null 2>&1 || true
+fi
+
 # Verify OUR backend actually came up on API_PORT before wiring nginx to it.
 # (Prevents nginx from proxying /api to some other app if ours crashed, e.g. no MongoDB.)
 echo "==> verifying backend on 127.0.0.1:${API_PORT}"

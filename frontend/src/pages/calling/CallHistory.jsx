@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { download, get } from '../../lib/api.js';
 import { useAuth } from '../../lib/auth.jsx';
 import { dateTime, duration, label } from '../../lib/format.js';
-import { DataTable, ErrorAlert, Field, Modal, StatusBadge } from '../../components/ui.jsx';
+import { DataTable, ErrorAlert, Field, Modal, Pager, StatusBadge } from '../../components/ui.jsx';
 import { useAsync } from '../../lib/hooks.js';
 import { RecordingPlayer } from '../../calling/RecordingPlayer.jsx';
 
@@ -53,7 +53,7 @@ export function CallHistory() {
   const users = useAsync(() => (can('calls:read_all') ? get('/users') : Promise.resolve({ items: [] })), []);
   const dispositions = useAsync(() => get('/call-dispositions'), []);
   const departments = useAsync(() => get('/departments'), []);
-  const set = (k) => (e) => { setPage(1); setF({ ...f, [k]: e.target.value }); };
+  const set = (k) => (e) => { const v = e.target.value; setPage(1); setF((x) => ({ ...x, [k]: v })); };
 
   return (
     <div className="stack">
@@ -92,13 +92,7 @@ export function CallHistory() {
             { key: 'transcript', label: 'Transcript', render: (c) => (c.hasTranscript ? '📝' : '—') },
           ]}
         />
-        {data && data.total > 50 && (
-          <div className="card-body row">
-            <button type="button" className="btn btn-sm" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</button>
-            <span className="small muted">Page {page} of {Math.ceil(data.total / 50)}</span>
-            <button type="button" className="btn btn-sm" disabled={page * 50 >= data.total} onClick={() => setPage(page + 1)}>Next</button>
-          </div>
-        )}
+        <Pager page={page} pageSize={50} total={data?.total} onPage={setPage} />
       </div>
       {detail && <CallDetail id={detail} onClose={() => setDetail(null)} />}
     </div>

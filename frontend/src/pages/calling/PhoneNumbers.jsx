@@ -18,7 +18,7 @@ function NumberEditor({ initial, onClose, onSaved }) {
   const hours = useAsync(() => get('/business-hours'), []);
   const teams = useAsync(() => get('/departments'), []);
   const { capabilities } = useCalls();
-  const set = (k, v) => setN({ ...n, [k]: v === '' ? null : v });
+  const set = (k, v) => setN((x) => ({ ...x, [k]: v === '' ? null : v }));
   const v = useValidation([
     !n.id && { key: 'number', label: 'Number', required: true, format: 'e164' },
     { key: 'label', label: 'Label', maxLength: 60 },

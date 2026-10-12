@@ -159,7 +159,7 @@ function Dashboard() {
 function CreateCompanyModal({ plans, onClose, onCreated }) {
   const [form, setForm] = useState({ companyName: '', email: '', adminName: '', adminEmail: '', password: '', planCode: 'PROFESSIONAL', trial: true });
   const [error, setError] = useState(null);
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const set = (k) => (e) => { const v = e.target.value; setForm((f) => ({ ...f, [k]: v })); };
   const v = useValidation([
     { key: 'companyName', label: 'Company name', required: true, minLength: 2, maxLength: 150 },
     { key: 'email', label: 'Business email', type: 'email', required: true },

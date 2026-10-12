@@ -17,7 +17,7 @@ function UserModal({ initial, roles, onClose, onSaved }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const manage = can('users:update');
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const set = (k) => (e) => { const v = e.target.value; setForm((f) => ({ ...f, [k]: v })); };
   const v = useValidation([
     { key: 'name', label: 'Name', required: true, format: 'name', maxLength: 80 },
     !form.id && { key: 'email', label: 'Email', type: 'email', required: true },

@@ -19,6 +19,7 @@ export function model(name, schema, { tenant = true } = {}) {
     versionKey: false,
     transform: (_, ret) => {
       delete ret._id;
+      delete ret._search; // internal search tokens (models/search.js)
       return ret;
     },
   });

@@ -2,13 +2,16 @@ import express, { Router } from 'express';
 import { badRequest, notFound } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
 import { validateField } from '../../lib/validation.js';
+import { pageParams, sortParam } from '../../lib/pagination.js';
+import { searchTerms } from '../../models/search.js';
 import { buildTemplateWorkbook, readTable, sendTable } from '../../lib/spreadsheet.js';
 import { requirePermission, requireResource } from '../../middleware/auth.js';
 import { checkLimit, remaining } from '../saas/usage.js';
 import { logActivity } from '../timeline/service.js';
 import { buildExport, importRows, templateGuide, templateHeaders } from './importExport.js';
+import { bumpCompany, cached } from '../../lib/cache.js';
 
-const PROTECTED_FIELDS = ['_id', 'id', 'organizationId', 'createdAt', 'updatedAt'];
+const PROTECTED_FIELDS = ['_id', 'id', 'organizationId', 'createdAt', 'updatedAt', '_search', '__v'];
 
 function clean(body) {
   const copy = { ...body };
@@ -20,14 +23,32 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function listFilter(req, searchFields, filterFields) {
+/** A lean list row in the same shape toJSON gives (models/plugins.js). */
+function toListItem({ _id, __v, _search, ...rest }) {
+  return { id: String(_id), ...rest };
+}
+
+/** Unanchored, case-insensitive match on the search fields (reads every record of the company). */
+const regexSearch = (q, searchFields) => {
+  const rx = new RegExp(escapeRegex(String(q).trim()), 'i');
+  return { $or: searchFields.map((f) => ({ [f]: rx })) };
+};
+
+/**
+ * List filter: company, ?q= search and ?field= filters. Models with search tokens (models/search.js) are
+ * searched through their index by word prefix; others with a regex.
+ */
+function listFilter(req, searchFields, filterFields, Model) {
   const filter = { organizationId: req.orgId };
   const { q } = req.query;
-  if (q && searchFields.length) {
-    const rx = new RegExp(escapeRegex(String(q)), 'i');
-    filter.$or = searchFields.map((f) => ({ [f]: rx }));
+  if (q && String(q).trim() && searchFields.length) {
+    const terms = Model?.searchFields && searchTerms(q);
+    Object.assign(filter, terms ? { _search: { $all: terms } } : regexSearch(q, searchFields));
   }
-  for (const f of filterFields) if (req.query[f] !== undefined && req.query[f] !== '') filter[f] = req.query[f];
+  for (const f of filterFields) {
+    const v = req.query[f];
+    if (v !== undefined && v !== '' && typeof v === 'string') filter[f] = v;
+  }
   return filter;
 }
 
@@ -64,6 +85,7 @@ export function crudRouter(Model, {
   resource, // permission prefix: GET → `${resource}:read`, POST → create, PATCH → update, DELETE → delete
   limit, // plan limit key checked before creating (users, customers, leads, deals)
   rules, // form rules (fieldRules.js) checked on create and update
+  sortable = ['createdAt', 'updatedAt'], // ?sort= fields clients may use (each needs an index in the model)
 } = {}) {
   const router = Router();
   const name = `${Model.collection.collectionName}`;
@@ -71,7 +93,7 @@ export function crudRouter(Model, {
   if (io) {
     // Registered before "/:id" so "export" and "import" are not read as record IDs
     router.get('/export', requirePermission('crm:export'), async (req, res) => {
-      const { headers, rows } = await buildExport(Model, io, listFilter(req, searchFields, filterFields), defaultSort);
+      const { headers, rows } = await buildExport(Model, io, listFilter(req, searchFields, filterFields, Model), defaultSort);
       await audit(req, `${name}.export`, { resourceType: Model.modelName, details: { count: rows.length, format: fileFormat(req) } });
       await sendTable(res, { headers, rows, name, format: fileFormat(req) });
     });
@@ -111,16 +133,37 @@ export function crudRouter(Model, {
 
   if (resource) router.use(requireResource(resource));
 
+  // A successful write makes this company's cached dashboards / reports stale (lib/cache.js)
+  router.use((req, res, next) => {
+    if (req.method !== 'GET') res.on('finish', () => { if (res.statusCode < 400) bumpCompany(req.orgId); });
+    next();
+  });
+
   router.get('/', async (req, res) => {
-    const filter = listFilter(req, searchFields, filterFields);
-    const { page = 1, limit = 50, sort } = req.query;
-    const lim = Math.min(Number(limit) || 50, 200);
-    const sortSpec = sort ? { [String(sort).replace(/^-/, '')]: String(sort).startsWith('-') ? -1 : 1 } : defaultSort;
-    const [items, total] = await Promise.all([
-      Model.find(filter).sort(sortSpec).skip((Math.max(Number(page), 1) - 1) * lim).limit(lim),
-      Model.countDocuments(filter),
+    const filter = listFilter(req, searchFields, filterFields, Model);
+    const { page, limit } = pageParams(req.query);
+    const sort = sortParam(req.query.sort, defaultSort, [...new Set([...sortable, ...Object.keys(defaultSort)])]);
+    // _id as a tie-breaker (same direction as the sort, so the indexes in the models serve it) keeps pages
+    // stable when many records share a value — e.g. thousands imported in the same millisecond
+    const order = { ...sort, _id: Object.values(sort)[0] };
+    // Lean rows (≈3× less CPU than full documents) shaped like toJSON: id instead of _id, no internals.
+    // The total is the costly part on big companies (it reads every matching index entry), so it is cached
+    // per filter; any write to the company refreshes it (bumpCompany).
+    const { organizationId: _org, ...countKey } = filter;
+    const run = (f, opts = {}) => Promise.all([
+      Model.find(f, null, opts).sort(order).skip((page - 1) * limit).limit(limit).lean().then((rows) => rows.map(toListItem)),
+      f === filter
+        ? cached(req.orgId, `count:${Model.modelName}:${JSON.stringify(countKey)}`, 30, () => Model.countDocuments(f, opts))
+        : Model.countDocuments(f, opts),
     ]);
-    res.json({ items, total, page: Number(page), limit: lim });
+    let [items, total] = await run(filter);
+    // Word-prefix search found nothing: also try "contains" (e.g. "arma" in Sharma), time-boxed so a large
+    // company never waits long for it
+    if (!total && filter._search && String(req.query.q).trim().length >= 3) {
+      const { _search, ...rest } = filter;
+      [items, total] = await run({ ...rest, ...regexSearch(req.query.q, searchFields) }, { maxTimeMS: 1500 }).catch(() => [[], 0]);
+    }
+    res.json({ items, total, page, limit, pages: Math.ceil(total / limit) });
   });
 
   router.get('/:id', async (req, res) => {

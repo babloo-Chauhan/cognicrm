@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { get, patch, post } from '../../lib/api.js';
 import { useAuth } from '../../lib/auth.jsx';
 import { duration, label, percent } from '../../lib/format.js';
-import { DataTable, ErrorAlert, Field, Modal, Stat, StatusBadge } from '../../components/ui.jsx';
+import { DataTable, ErrorAlert, Field, Modal, Pager, Stat, StatusBadge } from '../../components/ui.jsx';
 import { useAsync } from '../../lib/hooks.js';
 import { validateForm } from '../../lib/validation.js';
 
@@ -14,7 +14,7 @@ function CampaignEditor({ initial, onClose, onSaved }) {
   const users = useAsync(() => get('/users'), []);
   const numbers = useAsync(() => get('/phone-numbers'), []);
   const dispositions = useAsync(() => get('/call-dispositions'), []);
-  const set = (k, v) => setC({ ...c, [k]: v });
+  const set = (k, v) => setC((x) => ({ ...x, [k]: v }));
   const setSchedule = (k, v) => setC({ ...c, schedule: { ...c.schedule, [k]: v } });
   const [shown, setShown] = useState(false);
   const problems = validateForm([
@@ -114,7 +114,8 @@ function CampaignEditor({ initial, onClose, onSaved }) {
 
 function CampaignDetail({ id, onClose }) {
   const { data, reload } = useAsync(() => get(`/call-campaigns/${id}`), [id]);
-  const contacts = useAsync(() => get(`/call-campaigns/${id}/contacts`), [id]);
+  const [contactPage, setContactPage] = useState(1);
+  const contacts = useAsync(() => get(`/call-campaigns/${id}/contacts`, { page: contactPage, limit: 100 }), [id, contactPage]);
   const [csv, setCsv] = useState('');
   const [importResult, setImportResult] = useState(null);
   const { can } = useAuth();
@@ -177,6 +178,7 @@ function CampaignDetail({ id, onClose }) {
             { key: 'lastDisposition', label: 'Last disposition', render: (x) => label(x.lastDisposition) || '—' },
           ]}
         />
+        <Pager page={contactPage} pageSize={100} total={contacts.data?.total} loading={contacts.loading} onPage={setContactPage} />
       </div>
     </Modal>
   );

@@ -28,7 +28,8 @@ export function Login() {
   const [choices, setChoices] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  // Functional update: browser autofill fills email and password together, and a stale `form` would wipe one
+  const set = (k) => (e) => { const v = e.target.value; setForm((f) => ({ ...f, [k]: v })); };
 
   const submit = async (e, companyCode = form.companyCode) => {
     e?.preventDefault();

@@ -41,7 +41,7 @@ function WrapUpForm({ wrapUpCall }) {
 
   const related = wrapUpCall.related || {};
   const dispo = dispositions.find((d) => d.code === form.code);
-  const set = (k, v) => setExtras({ ...extras, [k]: v });
+  const set = (k, v) => setExtras((x) => ({ ...x, [k]: v }));
 
   // Follow-up actions must be complete and in the future before the wrap-up is saved
   const now = new Date();

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { z } from 'zod';
 import { Deal, Pipeline } from '../../models/index.js';
 import { requirePermission } from '../../middleware/auth.js';
@@ -6,6 +7,7 @@ import { validate } from '../../middleware/common.js';
 import { badRequest, conflict, notFound } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
 import { DEFAULT_PIPELINE } from '../saas/provisioning.js';
+import { cached } from '../../lib/cache.js';
 
 const router = Router();
 const objectId = (v) => /^[a-f0-9]{24}$/i.test(String(v));
@@ -66,6 +68,32 @@ router.get('/pipelines', requirePermission('deals:read'), async (req, res) => {
   await defaultPipeline(req.orgId);
   res.json({ items: await Pipeline.find({ organizationId: req.orgId }).sort({ isDefault: -1, name: 1 }) });
 });
+
+/**
+ * Board summary: deal count, total value and the 5 newest deal names per pipeline stage, computed in the
+ * database so it stays right with any number of deals. Deals without a pipeline count in the default one.
+ */
+router.get('/pipelines/board', requirePermission('deals:read'), async (req, res) => {
+  res.json(await cached(req.orgId, 'pipelines:board', 60, () => pipelineBoard(req.orgId)));
+});
+
+async function pipelineBoard(orgId) {
+  const def = await defaultPipeline(orgId);
+  const rows = await Deal.aggregate([
+    { $match: { organizationId: new mongoose.Types.ObjectId(String(orgId)) } },
+    {
+      $group: {
+        _id: { pipelineId: { $ifNull: ['$pipelineId', def?._id ?? null] }, stage: '$stage' },
+        count: { $sum: 1 },
+        value: { $sum: { $ifNull: ['$value', 0] } },
+        // $topN keeps only 5 per stage in memory (MongoDB 5.2+), unlike $push + $slice
+        recent: { $topN: { n: 5, sortBy: { createdAt: -1 }, output: { id: '$_id', name: '$name' } } },
+      },
+    },
+    { $project: { _id: 0, pipelineId: '$_id.pipelineId', stage: '$_id.stage', count: 1, value: 1, recent: 1 } },
+  ]);
+  return { items: rows.map((r) => ({ ...r, pipelineId: r.pipelineId ? String(r.pipelineId) : null, recent: r.recent.map((d) => ({ id: String(d.id), name: d.name })) })) };
+}
 
 router.post('/pipelines', requirePermission('pipelines:manage'), validate(pipelineSchema), async (req, res) => {
   if (await Pipeline.exists({ organizationId: req.orgId, name: req.body.name })) throw conflict('A pipeline with this name already exists');

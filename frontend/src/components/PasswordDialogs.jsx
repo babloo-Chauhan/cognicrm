@@ -86,7 +86,7 @@ export function ChangePasswordDialog({ onClose }) {
       setBusy(false);
     }
   };
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const set = (k) => (e) => { const v = e.target.value; setForm((f) => ({ ...f, [k]: v })); };
   return (
     <Modal
       title="Change password"

@@ -15,6 +15,8 @@ import * as sales from './service.js';
 import { calculate } from './calc.js';
 import { renderDocument } from './render.js';
 import { notify } from '../notifications/service.js';
+import { pageParams } from '../../lib/pagination.js';
+import { cached } from '../../lib/cache.js';
 
 const router = Router();
 // Reading needs sales:read; any change needs sales:write
@@ -70,8 +72,7 @@ function listQuery(req, extra = []) {
 }
 
 async function page(Model, req, filter, sort) {
-  const limit = Math.min(Number(req.query.limit) || 50, 200);
-  const pageNo = Math.max(Number(req.query.page) || 1, 1);
+  const { page: pageNo, limit } = pageParams(req.query);
   const [items, total] = await Promise.all([
     Model.find(filter).sort(sort).skip((pageNo - 1) * limit).limit(limit),
     Model.countDocuments(filter),
@@ -84,7 +85,7 @@ const withLink = (kind, doc) => ({ ...doc.toJSON(), publicUrl: sales.publicLink(
 // ---------------------------------------------------------------- overview & settings
 
 router.get('/sales/overview', async (req, res) => {
-  res.json(await sales.salesOverview(req.orgId));
+  res.json(await cached(req.orgId, 'sales:overview', 60, () => sales.salesOverview(req.orgId)));
 });
 
 router.get('/sales/settings', async (req, res) => {

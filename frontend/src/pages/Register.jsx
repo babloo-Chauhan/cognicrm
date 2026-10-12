@@ -55,7 +55,7 @@ export function Register() {
   const [notice, setNotice] = useState(null);
   const [result, setResult] = useState(null);
 
-  const set = (k) => (e) => setForm({ ...form, [k]: k === 'phone' ? phoneChars(e.target.value) : e.target.value });
+  const set = (k) => (e) => { const v = k === 'phone' ? phoneChars(e.target.value) : e.target.value; setForm((f) => ({ ...f, [k]: v })); };
   const errors = touched ? stepErrors(step, form) : {};
   const plan = plans.data?.items.find((p) => p.code === planCode);
   const providers = plans.data?.providers || [];

@@ -258,11 +258,37 @@ export function DataTable({ columns, rows, onRowClick, empty = 'Nothing here yet
       </TableHeader>
       <TableBody>
         {rows.map((r, i) => (
-          <TableRow key={r.id || r._id || i} className={cn(onRowClick && 'cursor-pointer')} onClick={onRowClick ? () => onRowClick(r) : undefined}>
+          <TableRow
+            key={r.id || r._id || i}
+            className={cn(onRowClick && 'cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none')}
+            onClick={onRowClick ? () => onRowClick(r) : undefined}
+            // Clickable rows also open with the keyboard (Tab to the row, Enter / Space)
+            tabIndex={onRowClick ? 0 : undefined}
+            onKeyDown={onRowClick ? (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); onRowClick(r); } } : undefined}
+          >
             {columns.map((c) => <TableCell key={c.key} className="px-4 py-3">{c.render ? c.render(r) : (r[c.key] ?? '—')}</TableCell>)}
           </TableRow>
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+/** "51–100 of 1,234" with Previous / Next for server-paginated lists. Hidden when everything fits on one page. */
+export function Pager({ page, pageSize, total, onPage, loading }) {
+  const pages = Math.max(1, Math.ceil((total || 0) / pageSize));
+  if (!total || pages <= 1) return null;
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  const fmt = (n) => n.toLocaleString('en-IN');
+  return (
+    <nav className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3" aria-label="Pagination">
+      <span className="text-xs text-muted-foreground">{fmt(from)}–{fmt(to)} of {fmt(total)}</span>
+      <div className="flex items-center gap-2">
+        <button type="button" className="btn btn-sm" disabled={page <= 1 || loading} onClick={() => onPage(page - 1)}>Previous</button>
+        <span className="text-xs text-muted-foreground">Page {fmt(page)} of {fmt(pages)}</span>
+        <button type="button" className="btn btn-sm" disabled={page >= pages || loading} onClick={() => onPage(page + 1)}>Next</button>
+      </div>
+    </nav>
   );
 }

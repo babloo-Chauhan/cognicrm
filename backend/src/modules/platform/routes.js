@@ -16,6 +16,7 @@ import { findPlan } from '../saas/plans.js';
 import { evaluateSubscription, invalidateTenant } from '../saas/tenant.js';
 import { period, usageSummary } from '../saas/usage.js';
 import { authenticatePlatform, requireSuperAdmin, signPlatformToken } from './auth.js';
+import { pageParams } from '../../lib/pagination.js';
 
 /** Super-admin API (/api/v1/platform). Separate login and token from company users. */
 export const platformPublicRouter = Router();
@@ -29,8 +30,8 @@ const idParam = (req) => {
 };
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const page = (req) => {
-  const limit = Math.min(Number(req.query.limit) || 25, 200);
-  return { limit, skip: (Math.max(Number(req.query.page) || 1, 1) - 1) * limit, page: Math.max(Number(req.query.page) || 1, 1) };
+  const { page: pageNo, limit } = pageParams(req.query, 25);
+  return { limit, skip: (pageNo - 1) * limit, page: pageNo };
 };
 
 platformPublicRouter.post('/platform/auth/login', validate(z.object({ email: z.string().trim().email(), password: z.string().min(1).max(128) })), async (req, res) => {

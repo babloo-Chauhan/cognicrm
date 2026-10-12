@@ -4,14 +4,16 @@ import { Button } from '@/components/ui/button';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { get, patch, post } from '../lib/api.js';
 import { dateTime, label, money } from '../lib/format.js';
-import { DataTable, ErrorAlert, Loading, Modal, StatusBadge } from '../components/ui.jsx';
-import { useAsync } from '../lib/hooks.js';
+import { DataTable, ErrorAlert, Loading, Modal, Pager, StatusBadge } from '../components/ui.jsx';
+import { useAsync, useDebounced } from '../lib/hooks.js';
 import { ContactActions } from '../calling/CallButton.jsx';
 import { ENTITY_CONFIG, validateEntity } from './entities.js';
 import { EntityForm } from './EntityForm.jsx';
 import { ExportButtons, ImportModal } from './ImportExport.jsx';
 import { OwnerName, useTeam } from '../lib/team.js';
 import { useAuth } from '../lib/auth.jsx';
+
+const PAGE_SIZE = 50;
 
 function cell(entity, cfg, key, row) {
   const v = row[key];
@@ -50,7 +52,16 @@ export function EntityList({ entity }) {
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState(null);
   const [showErrors, setShowErrors] = useState(false);
-  const { data, loading, error: loadError, reload } = useAsync(() => get(`/${entity}`, { q, ...filter, limit: 100 }), [entity, q, filter]);
+  const [saving, setSaving] = useState(false);
+  const search = useDebounced(q.trim());
+  // Back to page 1 whenever the search, filters or entity change
+  const [page, setPage] = useState({ n: 1, key: '' });
+  const pageKey = JSON.stringify([entity, search, filter]);
+  const pageNo = page.key === pageKey ? page.n : 1;
+  const { data, loading, error: loadError, reload } = useAsync(
+    () => get(`/${entity}`, { q: search || undefined, ...filter, page: pageNo, limit: PAGE_SIZE }),
+    [entity, search, filter, pageNo],
+  );
 
   // e.g. /contacts?new=1&phone=… from the inbound call popup
   useEffect(() => {
@@ -68,9 +79,12 @@ export function EntityList({ entity }) {
     return bad;
   };
 
+  // `saving` blocks a second click from creating the record twice
   const save = async () => {
+    if (saving) return;
     setError(null);
     if (invalid(creating)) return;
+    setSaving(true);
     try {
       const created = await post(`/${entity}`, creating);
       setCreating(null);
@@ -78,18 +92,24 @@ export function EntityList({ entity }) {
       else navigate(`/${entity}/${created.id}`);
     } catch (e) {
       setError(e);
+    } finally {
+      setSaving(false);
     }
   };
 
   const saveEdit = async () => {
+    if (saving) return;
     setError(null);
     if (invalid(editing)) return;
+    setSaving(true);
     try {
       await patch(`/${entity}/${editing.id}`, editing);
       setEditing(null);
       reload();
     } catch (e) {
       setError(e);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -113,7 +133,7 @@ export function EntityList({ entity }) {
         <div>
           <h1 className="flex items-center gap-3">
             {cfg.title}
-            {data && <span className="rounded-full bg-primary/10 px-2.5 py-0.5 font-sans text-xs font-semibold text-primary">{data.total}</span>}
+            {data && <span className="rounded-full bg-primary/10 px-2.5 py-0.5 font-sans text-xs font-semibold text-primary">{data.total.toLocaleString('en-IN')}</span>}
           </h1>
           <p>Manage your {cfg.title.toLowerCase()} — search, filter, import and export.</p>
         </div>
@@ -150,16 +170,17 @@ export function EntityList({ entity }) {
             columns={columns}
             rows={data?.items}
             onRowClick={entity === 'tasks' ? undefined : cfg.noDetail ? (r) => setEditing(r) : (r) => navigate(`/${entity}/${r.id}`)}
-            empty={`No ${cfg.title.toLowerCase()} yet.`}
+            empty={search || Object.values(filter).some(Boolean) ? `No ${cfg.title.toLowerCase()} match your search or filters.` : `No ${cfg.title.toLowerCase()} yet.`}
           />
         )}
+        <Pager page={pageNo} pageSize={PAGE_SIZE} total={data?.total} loading={loading} onPage={(n) => { setPage({ n, key: pageKey }); window.scrollTo({ top: 0 }); }} />
       </div>
       {importing && <ImportModal entity={entity} title={cfg.title} onClose={() => setImporting(false)} onImported={reload} />}
       {editing && (
         <Modal
           title={`Edit ${cfg.singular}`}
           onClose={() => { setEditing(null); setShowErrors(false); }}
-          footer={<><button type="button" className="btn" onClick={() => { setEditing(null); setShowErrors(false); }}>Cancel</button><button type="button" className="btn btn-primary" onClick={saveEdit}>Save</button></>}
+          footer={<><button type="button" className="btn" onClick={() => { setEditing(null); setShowErrors(false); }}>Cancel</button><button type="button" className="btn btn-primary" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button></>}
         >
           <ErrorAlert error={error} />
           <EntityForm entity={entity} value={editing} onChange={setEditing} showErrors={showErrors} />
@@ -169,7 +190,7 @@ export function EntityList({ entity }) {
         <Modal
           title={`New ${cfg.singular}`}
           onClose={() => { setCreating(null); setShowErrors(false); }}
-          footer={<><button type="button" className="btn" onClick={() => { setCreating(null); setShowErrors(false); }}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>Create</button></>}
+          footer={<><button type="button" className="btn" onClick={() => { setCreating(null); setShowErrors(false); }}>Cancel</button><button type="button" className="btn btn-primary" disabled={saving} onClick={save}>{saving ? 'Creating…' : 'Create'}</button></>}
         >
           <ErrorAlert error={error} />
           <EntityForm entity={entity} value={creating} onChange={setCreating} showErrors={showErrors} />

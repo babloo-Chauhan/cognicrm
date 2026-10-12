@@ -1,3 +1,4 @@
+import { searchPlugin } from './search.js';
 import mongoose from 'mongoose';
 import { model, ObjectId } from './plugins.js';
 
@@ -20,7 +21,8 @@ const accountSchema = new Schema({
   customerId: String,
   tags: [String],
 });
-accountSchema.index({ organizationId: 1, createdAt: -1 });
+accountSchema.index({ organizationId: 1, createdAt: -1, _id: -1 });
+accountSchema.plugin(searchPlugin, { fields: ['name', 'industry', 'website', 'phone', 'customerId'] });
 export const Account = model('Account', accountSchema);
 
 const contactSchema = new Schema({
@@ -36,7 +38,9 @@ const contactSchema = new Schema({
   tags: [String],
   ...commonPrefs,
 });
-contactSchema.index({ organizationId: 1, createdAt: -1 });
+contactSchema.index({ organizationId: 1, createdAt: -1, _id: -1 });
+contactSchema.index({ organizationId: 1, ownerId: 1, createdAt: -1, _id: -1 });
+contactSchema.plugin(searchPlugin, { fields: ['firstName', 'lastName', 'email', 'phone', 'company', 'customerId'] });
 contactSchema.index({ organizationId: 1, email: 1 });
 export const Contact = model('Contact', contactSchema);
 
@@ -63,8 +67,11 @@ const leadSchema = new Schema({
   tags: [String],
   ...commonPrefs,
 });
-leadSchema.index({ organizationId: 1, status: 1 });
-leadSchema.index({ organizationId: 1, createdAt: -1 });
+leadSchema.index({ organizationId: 1, status: 1, createdAt: -1, _id: -1 });
+leadSchema.index({ organizationId: 1, createdAt: -1, _id: -1 });
+leadSchema.index({ organizationId: 1, ownerId: 1, createdAt: -1, _id: -1 });
+leadSchema.index({ organizationId: 1, score: -1, _id: -1 });
+leadSchema.plugin(searchPlugin, { fields: ['name', 'email', 'phone', 'company'] });
 leadSchema.index({ organizationId: 1, email: 1 });
 export const Lead = model('Lead', leadSchema);
 
@@ -86,8 +93,11 @@ const dealSchema = new Schema({
   scoreFactors: [{ _id: false, factor: String, points: Number, detail: String }],
   lastActivityAt: Date,
 });
-dealSchema.index({ organizationId: 1, stage: 1 });
-dealSchema.index({ organizationId: 1, createdAt: -1 });
+dealSchema.index({ organizationId: 1, stage: 1, createdAt: -1, _id: -1 });
+dealSchema.index({ organizationId: 1, createdAt: -1, _id: -1 });
+dealSchema.index({ organizationId: 1, ownerId: 1, createdAt: -1, _id: -1 });
+dealSchema.index({ organizationId: 1, score: -1, _id: -1 });
+dealSchema.plugin(searchPlugin, { fields: ['name'] });
 export const Deal = model('Deal', dealSchema);
 
 const ticketSchema = new Schema({
@@ -99,7 +109,8 @@ const ticketSchema = new Schema({
   accountId: { type: ObjectId, ref: 'Account' },
   assigneeId: { type: ObjectId, ref: 'User' },
 });
-ticketSchema.index({ organizationId: 1, status: 1 });
+ticketSchema.index({ organizationId: 1, status: 1, createdAt: -1, _id: -1 });
+ticketSchema.index({ organizationId: 1, createdAt: -1, _id: -1 });
 export const Ticket = model('Ticket', ticketSchema);
 
 const relatedRefs = {
@@ -122,7 +133,8 @@ const taskSchema = new Schema({
   reminderSentAt: { type: Date, default: null }, // follow-up reminder sent for the current dueAt
 });
 taskSchema.index({ status: 1, reminderSentAt: 1, dueAt: 1 });
-taskSchema.index({ organizationId: 1, status: 1, dueAt: 1 });
+taskSchema.index({ organizationId: 1, status: 1, dueAt: 1, _id: 1 });
+taskSchema.index({ organizationId: 1, assigneeId: 1, status: 1, dueAt: 1, _id: 1 });
 export const Task = model('Task', taskSchema);
 
 const noteSchema = new Schema({

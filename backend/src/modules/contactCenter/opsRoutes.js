@@ -18,6 +18,8 @@ import {
   campaignAnalytics, dialContact, importContacts, joinCampaign, previewNext, scheduleContactCallback, setCampaignStatus, skipContact,
 } from '../campaigns/service.js';
 import { SUPPORTED_TELEPHONY_PROVIDERS } from '../telephony/registry.js';
+import { pageParams } from '../../lib/pagination.js';
+import { cached } from '../../lib/cache.js';
 
 /** Public (signature-protected) routes — mounted before authentication. */
 export const publicRouter = Router();
@@ -38,7 +40,7 @@ const router = Router();
 router.get('/recordings', async (req, res) => {
   const filter = { organizationId: req.orgId, deletedAt: null };
   if (req.query.kind) filter.kind = req.query.kind;
-  const recordings = await CallRecording.find(filter).sort({ createdAt: -1 }).limit(Math.min(Number(req.query.limit) || 100, 500))
+  const recordings = await CallRecording.find(filter).sort({ createdAt: -1 }).limit(pageParams(req.query, 100).limit)
     .populate({ path: 'callId', select: 'direction customerPhone agentId startedAt durationSeconds disposition', populate: { path: 'agentId', select: 'name' } })
     .lean();
   const canAll = hasPermission(req.user, 'recordings:read');
@@ -117,18 +119,45 @@ router.post('/alerts/:id/ack', requirePermission('alerts:read'), async (req, res
 router.get('/audit-logs', requirePermission('audit:read'), async (req, res) => {
   const filter = { organizationId: req.orgId };
   if (req.query.action) filter.action = req.query.action;
-  res.json({ items: await AuditLog.find(filter).sort({ createdAt: -1 }).limit(Math.min(Number(req.query.limit) || 200, 1000)).populate('userId', 'name') });
+  const { page, limit } = pageParams(req.query, 100);
+  const [items, total] = await Promise.all([
+    AuditLog.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('userId', 'name'),
+    AuditLog.countDocuments(filter),
+  ]);
+  res.json({ items, total, page, limit, pages: Math.ceil(total / limit) });
 });
 
 // ---------------------------------------------------------------- analytics & supervisor
+/** Analytics filters from the query string; a bad date or id is a 400, not a database error. */
+function analyticsQuery(query) {
+  const out = {};
+  for (const k of ['from', 'to']) {
+    if (!query[k]) continue;
+    if (Number.isNaN(new Date(query[k]).getTime())) throw badRequest(`Invalid ${k} date`);
+    out[k] = String(query[k]);
+  }
+  for (const k of ['agentId', 'queueId', 'departmentId']) {
+    if (!query[k]) continue;
+    if (!/^[a-f0-9]{24}$/i.test(String(query[k]))) throw badRequest(`Invalid ${k}`);
+    out[k] = String(query[k]);
+  }
+  if (query.direction) {
+    if (!['inbound', 'outbound'].includes(query.direction)) throw badRequest('Invalid direction');
+    out.direction = query.direction;
+  }
+  return out;
+}
+
 router.get('/analytics/calls', requirePermission('analytics:read'), async (req, res) => {
   const org = await Organization.findById(req.orgId).select('settings.timezone').lean();
-  res.json(await callAnalytics(req.orgId, { ...req.query, timezone: org?.settings?.timezone }));
+  const q = analyticsQuery(req.query);
+  res.json(await cached(req.orgId, `analytics:calls:${JSON.stringify(q)}`, 60, () => callAnalytics(req.orgId, { ...q, timezone: org?.settings?.timezone })));
 });
 
 router.get('/analytics/me', async (req, res) => {
   const org = await Organization.findById(req.orgId).select('settings.timezone').lean();
-  res.json(await callAnalytics(req.orgId, { ...req.query, agentId: req.user._id, timezone: org?.settings?.timezone }));
+  const q = analyticsQuery(req.query);
+  res.json(await cached(req.orgId, `analytics:me:${req.user._id}:${JSON.stringify(q)}`, 60, () => callAnalytics(req.orgId, { ...q, agentId: req.user._id, timezone: org?.settings?.timezone })));
 });
 
 router.get('/supervisor/dashboard', requirePermission('supervisor:monitor'), async (req, res) => {
@@ -191,7 +220,12 @@ router.post('/call-campaigns/:id/contacts', requirePermission('campaigns:manage'
 router.get('/call-campaigns/:id/contacts', async (req, res) => {
   const filter = { organizationId: req.orgId, campaignId: req.params.id };
   if (req.query.status) filter.status = req.query.status;
-  res.json({ items: await CallCampaignContact.find(filter).sort({ createdAt: 1 }).limit(Math.min(Number(req.query.limit) || 200, 1000)) });
+  const { page, limit } = pageParams(req.query, 200);
+  const [items, total] = await Promise.all([
+    CallCampaignContact.find(filter).sort({ createdAt: 1, _id: 1 }).skip((page - 1) * limit).limit(limit),
+    CallCampaignContact.countDocuments(filter),
+  ]);
+  res.json({ items, total, page, limit });
 });
 for (const action of ['start', 'pause', 'resume', 'complete']) {
   router.post(`/call-campaigns/:id/${action}`, requirePermission('campaigns:manage'), async (req, res) => {

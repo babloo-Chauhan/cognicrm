@@ -125,6 +125,7 @@ router.post('/leads/:id/score', requirePermission('leads:update'), async (req, r
 });
 
 router.use('/leads', crudRouter(Lead, {
+  sortable: ['createdAt', 'updatedAt', 'score'],
   rules: FIELD_RULES.leads,
   resource: 'leads',
   limit: 'leads',
@@ -158,6 +159,7 @@ router.post('/deals/:id/score', requirePermission('deals:update'), async (req, r
 });
 
 router.use('/deals', crudRouter(Deal, {
+  sortable: ['createdAt', 'updatedAt', 'score'],
   rules: FIELD_RULES.deals,
   resource: 'deals',
   limit: 'deals',

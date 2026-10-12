@@ -22,6 +22,13 @@ function required(name, fallbackForDev) {
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   isTest,
+  // Requests per minute per signed-in session, and per IP address (flood guard for a whole office / NAT)
+  // Optional Redis (redis://host:6379): shared cache and rate-limit counters across API instances
+  redisUrl: process.env.REDIS_URL || '',
+  rateLimit: {
+    perMinute: Number(process.env.RATE_LIMIT_PER_MINUTE) || 600,
+    ipPerMinute: Number(process.env.RATE_LIMIT_IP_PER_MINUTE) || 6000,
+  },
   port: Number(process.env.PORT || 5000),
   // A doubled slash before the database name ("…mongodb.net//crm") makes the db name "/crm", which MongoDB rejects
   mongoUri: (process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cognieos').replace(/^(mongodb(?:\+srv)?:\/\/[^/]+)\/{2,}/, '$1/'),
