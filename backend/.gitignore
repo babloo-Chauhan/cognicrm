@@ -2,3 +2,6 @@ node_modules
 .env
 coverage
 secrets/
+
+# local Redis snapshot
+dump.rdb
