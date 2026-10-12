@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { http, registerOrg, useDatabase } from './helpers.js';
 import { Lead } from '../src/models/index.js';
@@ -40,6 +41,42 @@ describe('pagination and sorting', () => {
     expect((await http().get('/api/v1/leads?page=99').set(admin.auth)).body.items).toEqual([]);
     expect((await http().get('/api/v1/leads?sort=passwordHash').set(admin.auth)).status).toBe(400);
     expect((await http().get('/api/v1/leads?sort=-score').set(admin.auth)).status).toBe(200);
+  });
+
+  it('walks a list with cursors: every record once, fast at any depth', async () => {
+    const admin = await registerOrg();
+    const at = new Date();
+    await Lead.insertMany(Array.from({ length: 23 }, (_, i) => ({ organizationId: admin.org.id, name: `Lead ${i}`, createdAt: at, score: i % 3 })));
+    for (const sort of ['', '-score']) {
+      const seen = [];
+      let after = null;
+      for (let i = 0; i < 5; i += 1) {
+        const res = await http().get(`/api/v1/leads?limit=10${sort ? `&sort=${sort}` : ''}${after ? `&after=${after}` : ''}`).set(admin.auth);
+        expect(res.status).toBe(200);
+        seen.push(...ids(res));
+        after = res.body.next;
+        if (!after) break;
+      }
+      expect(seen).toHaveLength(23);
+      expect(new Set(seen).size).toBe(23);
+    }
+    expect((await http().get('/api/v1/leads?after=garbage').set(admin.auth)).status).toBe(400);
+  });
+
+  it('streams exports with every row (CSV and Excel)', async () => {
+    const admin = await registerOrg();
+    await Lead.insertMany(Array.from({ length: 1234 }, (_, i) => ({ organizationId: admin.org.id, name: `Lead ${i}`, phone: '=cmd' })));
+    const csv = await http().get('/api/v1/leads/export?format=csv').set(admin.auth);
+    expect(csv.headers['x-export-rows']).toBe('1234');
+    const lines = csv.text.split('\n');
+    expect(lines).toHaveLength(1235);
+    expect(lines[0].startsWith('ID,Name,')).toBe(true);
+    expect(csv.text).toContain("'=cmd"); // formula injection still neutralized
+    const xlsx = await http().get('/api/v1/leads/export?format=xlsx').set(admin.auth).buffer(true)
+      .parse((res, cb) => { const c = []; res.on('data', (d) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(xlsx.body);
+    expect(wb.worksheets[0].rowCount).toBe(1235);
   });
 
   it('list rows look like detail records (id, no internals)', async () => {

@@ -114,6 +114,11 @@ Tested with 3.5 lakh records in one company (`backend/scripts/seed-bulk.js`, `pe
   a flood guard, so one office IP never blocks its colleagues. Counters in Redis when configured.
 - Measured locally (one Node process): mixed traffic ≈ 230 req/s, p50 76 ms at 20 concurrent, 0 errors at 100.
 - Log rotation with pm2-logrotate on deploy.
+- Deep lists: `?after=<cursor>` (the `next` field of every list reply) seeks in the index — the last of 1 lakh
+  leads loads in ~15 ms; the app's load-more uses it. Page numbers still work for the web pager.
+- Exports stream CSV / XLSX in batches (first byte in ~0.1 s, 1 lakh leads ≈ 4 s, low memory); cap 2 lakh rows,
+  reported in `X-Export-Truncated`.
+- Live updates (socket.io) use the Redis adapter when `REDIS_URL` is set, so several API instances share them.
 
 ## Known limits
 

@@ -2,13 +2,13 @@ import express, { Router } from 'express';
 import { badRequest, notFound } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
 import { validateField } from '../../lib/validation.js';
-import { pageParams, sortParam } from '../../lib/pagination.js';
+import { cursorFilter, encodeCursor, pageParams, sortParam } from '../../lib/pagination.js';
 import { searchTerms } from '../../models/search.js';
 import { buildTemplateWorkbook, readTable, sendTable } from '../../lib/spreadsheet.js';
 import { requirePermission, requireResource } from '../../middleware/auth.js';
 import { checkLimit, remaining } from '../saas/usage.js';
 import { logActivity } from '../timeline/service.js';
-import { buildExport, importRows, templateGuide, templateHeaders } from './importExport.js';
+import { importRows, streamExport, templateGuide, templateHeaders } from './importExport.js';
 import { bumpCompany, cached } from '../../lib/cache.js';
 
 const PROTECTED_FIELDS = ['_id', 'id', 'organizationId', 'createdAt', 'updatedAt', '_search', '__v'];
@@ -93,9 +93,9 @@ export function crudRouter(Model, {
   if (io) {
     // Registered before "/:id" so "export" and "import" are not read as record IDs
     router.get('/export', requirePermission('crm:export'), async (req, res) => {
-      const { headers, rows } = await buildExport(Model, io, listFilter(req, searchFields, filterFields, Model), defaultSort);
-      await audit(req, `${name}.export`, { resourceType: Model.modelName, details: { count: rows.length, format: fileFormat(req) } });
-      await sendTable(res, { headers, rows, name, format: fileFormat(req) });
+      const format = fileFormat(req);
+      const result = await streamExport(res, Model, io, listFilter(req, searchFields, filterFields, Model), defaultSort, { format, name });
+      await audit(req, `${name}.export`, { resourceType: Model.modelName, details: { count: result.count, truncated: result.truncated, format } });
     });
 
     router.get('/import/template', requirePermission('crm:import'), async (req, res) => {
@@ -150,8 +150,16 @@ export function crudRouter(Model, {
     // The total is the costly part on big companies (it reads every matching index entry), so it is cached
     // per filter; any write to the company refreshes it (bumpCompany).
     const { organizationId: _org, ...countKey } = filter;
+    // ?after=<cursor> (from the previous reply's `next`): seek instead of skipping — constant cost at any depth
+    const after = req.query.after ? cursorFilter(req.query.after, sort, Model) : null;
+    const findPage = async (f, opts) => {
+      if (!after) return Model.find(f, null, opts).sort(order).skip((page - 1) * limit).limit(limit).lean();
+      const tie = await Model.find({ ...f, ...after.tie }, null, opts).sort(order).limit(limit).lean();
+      if (tie.length >= limit) return tie;
+      return [...tie, ...await Model.find({ $and: [f, after.rest] }, null, opts).sort(order).limit(limit - tie.length).lean()];
+    };
     const run = (f, opts = {}) => Promise.all([
-      Model.find(f, null, opts).sort(order).skip((page - 1) * limit).limit(limit).lean().then((rows) => rows.map(toListItem)),
+      findPage(f, opts).then((rows) => rows.map(toListItem)),
       f === filter
         ? cached(req.orgId, `count:${Model.modelName}:${JSON.stringify(countKey)}`, 30, () => Model.countDocuments(f, opts))
         : Model.countDocuments(f, opts),
@@ -163,7 +171,9 @@ export function crudRouter(Model, {
       const { _search, ...rest } = filter;
       [items, total] = await run({ ...rest, ...regexSearch(req.query.q, searchFields) }, { maxTimeMS: 1500 }).catch(() => [[], 0]);
     }
-    res.json({ items, total, page, limit, pages: Math.ceil(total / limit) });
+    const sortField = Object.keys(sort)[0];
+    const next = items.length === limit ? encodeCursor(items[items.length - 1], sortField) : null;
+    res.json({ items, total, page, limit, pages: Math.ceil(total / limit), next });
   });
 
   router.get('/:id', async (req, res) => {

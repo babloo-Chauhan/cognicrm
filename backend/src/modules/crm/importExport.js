@@ -3,11 +3,13 @@ import {
 } from '../../models/index.js';
 import { badRequest } from '../../lib/errors.js';
 import { normalizePhone } from '../../lib/phone.js';
-import { restoreFormula } from '../../lib/spreadsheet.js';
+import ExcelJS from 'exceljs';
+import { csvLine, restoreFormula } from '../../lib/spreadsheet.js';
 import { FORMATS } from '../../lib/validation.js';
 
 export const MAX_IMPORT_ROWS = 10000;
-export const MAX_EXPORT_ROWS = 50000;
+// Streamed, so the cap only guards against runaway downloads; the response says when it was reached
+export const MAX_EXPORT_ROWS = 200000;
 export const IMPORT_MODES = ['skip', 'update', 'create'];
 
 // Offered as dropdowns in the Excel template (not enforced: companies may use their own words)
@@ -191,17 +193,52 @@ function exportValue(field, v) {
 }
 
 /** Loads matching records (same filter as the list view) and turns them into rows keyed by column header. */
-export async function buildExport(Model, spec, filter, sort) {
-  let query = Model.find(filter).sort(sort).limit(MAX_EXPORT_ROWS).lean();
-  for (const f of spec.fields) if (POPULATE[f.type]) query = query.populate({ path: f.key, ...POPULATE[f.type] });
-  const docs = await query;
+/**
+ * Streams the matching records as CSV or XLSX straight to the response, a batch at a time, so a large export
+ * neither holds every record in memory nor makes the user wait for the whole file before the download starts.
+ * Returns { count, truncated }.
+ */
+export async function streamExport(res, Model, spec, filter, sort, { format, name }) {
+  const total = await Model.countDocuments(filter);
+  const truncated = total > MAX_EXPORT_ROWS;
   const headers = [ID_HEADER, ...spec.fields.map((f) => f.header)];
-  const rows = docs.map((d) => {
+  let query = Model.find(filter).sort({ ...sort, _id: Object.values(sort)[0] ?? -1 }).limit(MAX_EXPORT_ROWS).lean();
+  for (const f of spec.fields) if (POPULATE[f.type]) query = query.populate({ path: f.key, ...POPULATE[f.type] });
+  const rowOf = (d) => {
     const row = { [ID_HEADER]: String(d._id) };
     for (const f of spec.fields) row[f.header] = exportValue(f, d[f.key]);
     return row;
-  });
-  return { headers, rows };
+  };
+  if (truncated) res.setHeader('X-Export-Truncated', `${MAX_EXPORT_ROWS} of ${total}`);
+  res.setHeader('X-Export-Rows', String(Math.min(total, MAX_EXPORT_ROWS)));
+  let count = 0;
+  const cursor = query.cursor({ batchSize: 1000 });
+
+  if (format === 'xlsx') {
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${name}.xlsx"`);
+    const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useSharedStrings: false });
+    const ws = wb.addWorksheet(name);
+    ws.columns = headers.map((h) => ({ header: h, key: h, width: Math.max(12, h.length + 4) }));
+    ws.getRow(1).font = { bold: true };
+    for await (const d of cursor) { ws.addRow(rowOf(d)).commit(); count += 1; }
+    ws.commit();
+    await wb.commit();
+    return { count, truncated };
+  }
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${name}.csv"`);
+  const write = (chunk) => (res.write(chunk) ? null : new Promise((r) => { res.once('drain', r); })); // respect back-pressure
+  await write(csvLine(headers, Object.fromEntries(headers.map((h) => [h, h]))));
+  let buffer = '';
+  for await (const d of cursor) {
+    buffer += `\n${csvLine(headers, rowOf(d))}`;
+    count += 1;
+    if (buffer.length > 64 * 1024) { await write(buffer); buffer = ''; }
+  }
+  res.end(buffer);
+  return { count, truncated };
 }
 
 // ---------------------------------------------------------------- import: cell parsing

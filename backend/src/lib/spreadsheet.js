@@ -12,12 +12,16 @@ export function restoreFormula(value) {
   return typeof value === 'string' && /^'[=+\-@]/.test(value) ? value.slice(1) : value;
 }
 
+const csvCell = (v) => {
+  const safe = neutralizeFormula(v);
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+};
+
+/** One CSV line (no newline) for `row`, in `headers` order, with formula injection neutralized. */
+export const csvLine = (headers, row) => headers.map((h) => csvCell(row[h])).join(',');
+
 export function toCsv(headers, rows) {
-  const esc = (v) => {
-    const safe = neutralizeFormula(v);
-    return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
-  };
-  return [headers.join(','), ...rows.map((r) => headers.map((h) => esc(r[h])).join(','))].join('\n');
+  return [headers.join(','), ...rows.map((r) => csvLine(headers, r))].join('\n');
 }
 
 /** RFC 4180 CSV parser: quoted fields, escaped quotes, embedded newlines, CRLF, UTF-8 BOM. Returns rows of strings. */
