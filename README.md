@@ -11,6 +11,9 @@ What is implemented where (and what needs real provider accounts) is in [docs/IM
 
 ## Run it locally
 
+**New to the project? Follow [docs/DEVELOPER_SETUP.md](docs/DEVELOPER_SETUP.md)** — the full step-by-step setup
+(tools, API, web app, mobile app, integrations, tests, troubleshooting). The short version:
+
 ```bash
 # 1. API (needs MongoDB; or use the in-memory DB below)
 cd backend
@@ -36,7 +39,7 @@ Open the web app, choose **Create a workspace**, then add teammates under **Sett
 ## Tests & checks
 
 ```bash
-cd backend  && npm test && npm run lint     # 84 API/unit tests on an in-memory MongoDB
+cd backend  && npm test && npm run lint     # 184 API/unit tests on an in-memory MongoDB
 cd frontend && npm run lint && npm run build
 cd app      && npm run lint && npx expo-doctor
 ```
