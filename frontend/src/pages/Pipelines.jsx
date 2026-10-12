@@ -111,7 +111,7 @@ export function Pipelines() {
                   return (
                     <div key={s.key} style={{ minWidth: 160, flex: 1, background: 'var(--surface-2)', borderRadius: 8, padding: 10 }}>
                       <div className="small" style={{ fontWeight: 600 }}>{s.label} <span className="muted">· {s.probability}%</span></div>
-                      <div className="small muted">{board.data ? `${cell.count.toLocaleString('en-IN')} deals · ${money(cell.value)}` : 'Loading…'}</div>
+                      <div className="small muted">{board.data ? `${cell.count.toLocaleString('en-IN')} deal${cell.count === 1 ? '' : 's'} · ${money(cell.value)}` : 'Loading…'}</div>
                       {cell.recent.map((d) => <Link key={d.id} to={`/deals/${d.id}`} className="small" style={{ display: 'block', marginTop: 6 }}>{d.name}</Link>)}
                       {cell.count > cell.recent.length && <div className="small muted" style={{ marginTop: 6 }}>+{(cell.count - cell.recent.length).toLocaleString('en-IN')} more</div>}
                     </div>

@@ -21,7 +21,8 @@ export function percent(v) {
 }
 
 export function money(v, currency = 'INR') {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(v || 0);
+  // Rupees always in lakh/crore grouping (₹14,25,000), whatever the browser's language
+  return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(v || 0);
 }
 
 export function label(v) {
