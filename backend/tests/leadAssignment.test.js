@@ -65,20 +65,24 @@ describe('lead assignment and visibility', () => {
     expect(await leadsOf(sita)).toEqual(['Mehta Steels']);
     expect((await notes(sita)).some((x) => x.type === 'lead_assigned' && x.data.leadId === lead.id)).toBe(true);
 
-    // Ravi no longer holds it: he can see it but not move it again
+    // Both keep it as theirs: Ravi can still work on it and assign it on
+    expect((await http().patch(`/api/v1/leads/${lead.id}`).set(ravi.auth).send({ status: 'contacted' })).status).toBe(200);
     const again = await http().patch(`/api/v1/leads/${lead.id}`).set(ravi.auth).send({ ownerId: amit.user.id });
-    expect(again.status).toBe(403);
-    expect(again.body.message).toMatch(/admin or the person/);
-    // …nor can the holder unassign it
+    expect(again.status).toBe(200);
+    expect(await leadsOf(amit)).toEqual(['Mehta Steels']);
+    // …and Sita, who had it in between, too
+    expect((await http().patch(`/api/v1/leads/${lead.id}`).set(sita.auth).send({ ownerId: sita.user.id })).status).toBe(200);
+    // …but only the admin can unassign it
     expect((await http().patch(`/api/v1/leads/${lead.id}`).set(sita.auth).send({ ownerId: null })).status).toBe(403);
     // …and nobody can rewrite the trail
     await http().patch(`/api/v1/leads/${lead.id}`).set(sita.auth).send({ assignments: [], assignees: [] });
-    expect((await http().get(`/api/v1/leads/${lead.id}`).set(admin.auth)).body.assignments).toHaveLength(2);
+    expect((await http().get(`/api/v1/leads/${lead.id}`).set(admin.auth)).body.assignments).toHaveLength(4);
 
     // The admin can move it to anyone; Sita (previous holder) is told where it went
     await http().patch(`/api/v1/leads/${lead.id}`).set(admin.auth).send({ ownerId: amit.user.id });
     const moved = (await notes(sita)).find((x) => x.type === 'lead_reassigned');
     expect(moved.body).toContain('Amit');
+    expect(moved.body).toContain('stays in your leads');
     // The admin can unassign it; everyone who held it still sees it
     const unassigned = await http().patch(`/api/v1/leads/${lead.id}`).set(admin.auth).send({ ownerId: null });
     expect(unassigned.status).toBe(200);

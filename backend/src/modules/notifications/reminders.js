@@ -1,4 +1,4 @@
-import { Appointment, Task } from '../../models/index.js';
+import { Appointment, Lead, Task } from '../../models/index.js';
 import { notify } from './service.js';
 
 // How long before an appointment its owner is reminded.
@@ -19,6 +19,25 @@ export async function remindDueTasks(now = new Date()) {
       title: `⏰ Follow-up due: ${task.title}`,
       body: task.description ? String(task.description).slice(0, 120) : `Due ${task.dueAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
       data: { taskId: String(task._id), ...relatedData(task.related) },
+    });
+  }
+  return due.length;
+}
+
+/** Reminds whoever holds a lead when its follow-up time arrives; the notification opens it ready to call. */
+export async function remindLeadFollowUps(now = new Date()) {
+  const due = await Lead.find({
+    nextFollowUpAt: { $ne: null, $lte: now }, followUpReminderSentAt: null, ownerId: { $ne: null },
+    status: { $nin: ['converted', 'won', 'lost', 'unqualified'] },
+  }).limit(200);
+  for (const lead of due) {
+    lead.followUpReminderSentAt = now;
+    await lead.save();
+    await notify(lead.organizationId, lead.ownerId, {
+      type: 'lead_follow_up',
+      title: `📞 Follow up: ${lead.name}`,
+      body: [lead.company, lead.phone, 'tap to call'].filter(Boolean).join(' · '),
+      data: { leadId: String(lead._id), ...(lead.phone ? { phone: lead.phone, action: 'call' } : {}) },
     });
   }
   return due.length;

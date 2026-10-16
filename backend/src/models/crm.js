@@ -68,6 +68,8 @@ const leadSchema = new Schema({
   lastContactedAt: Date,
   convertedContactId: { type: ObjectId, ref: 'Contact' },
   requirement: String, // what the customer needs
+  nextFollowUpAt: { type: Date, default: null }, // when to follow up next (app's Follow-up tab + reminder)
+  followUpReminderSentAt: { type: Date, default: null }, // reminder sent for the current nextFollowUpAt
   notes: String, // remarks typed on the lead form; later remarks are Notes linked to the lead
   tags: [String],
   ...commonPrefs,
@@ -76,6 +78,8 @@ leadSchema.index({ organizationId: 1, status: 1, createdAt: -1, _id: -1 });
 leadSchema.index({ organizationId: 1, createdAt: -1, _id: -1 });
 leadSchema.index({ organizationId: 1, ownerId: 1, createdAt: -1, _id: -1 });
 leadSchema.index({ organizationId: 1, assignees: 1, createdAt: -1, _id: -1 });
+leadSchema.index({ nextFollowUpAt: 1, followUpReminderSentAt: 1 });
+leadSchema.index({ organizationId: 1, ownerId: 1, nextFollowUpAt: 1 });
 leadSchema.index({ organizationId: 1, score: -1, _id: -1 });
 leadSchema.plugin(searchPlugin, { fields: ['name', 'email', 'phone', 'company'] });
 leadSchema.index({ organizationId: 1, email: 1 });

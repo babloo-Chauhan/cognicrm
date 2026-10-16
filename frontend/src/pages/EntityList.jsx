@@ -32,7 +32,7 @@ function cell(entity, cfg, key, row) {
   if (key === 'value' || key === 'unitPrice') return money(v, row.currency);
   if (key === 'taxRate') return v != null ? `${v}%` : '—';
   if (key === 'active') return v ? 'Yes' : 'No';
-  if (['createdAt', 'dueAt', 'lastContactedAt'].includes(key)) return dateTime(v);
+  if (['createdAt', 'dueAt', 'lastContactedAt', 'nextFollowUpAt'].includes(key)) return dateTime(v);
   if (key === 'expectedCloseDate') return v ? new Date(v).toLocaleDateString() : '—';
   if (key === 'source') return label(v);
   return v ?? '—';

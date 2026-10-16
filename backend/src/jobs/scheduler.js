@@ -9,7 +9,7 @@ import { getTelephonyProvider } from '../modules/telephony/registry.js';
 import { createAlert } from '../modules/compliance/fraud.js';
 import { Organization } from '../models/index.js';
 import { expireQuotes, markOverdueInvoices } from '../modules/sales/service.js';
-import { remindDueTasks, remindUpcomingAppointments } from '../modules/notifications/reminders.js';
+import { remindDueTasks, remindLeadFollowUps, remindUpcomingAppointments } from '../modules/notifications/reminders.js';
 import { expireSubscriptions } from '../modules/saas/jobs.js';
 
 /** Hangs up calls that exceed the organization's maximum call duration (fraud control). */
@@ -38,6 +38,7 @@ const JOBS = [
   { name: 'dialer', everyMs: 5000, run: runDialerTick },
   { name: 'callbacks', everyMs: 30000, run: processDueCallbacks },
   { name: 'task follow-up reminders', everyMs: 30000, run: remindDueTasks },
+  { name: 'lead follow-up reminders', everyMs: 30000, run: remindLeadFollowUps },
   { name: 'appointment reminders', everyMs: 30000, run: remindUpcomingAppointments },
   { name: 'missed callbacks', everyMs: 3600000, run: markMissedCallbacks },
   { name: 'webhook retries', everyMs: 30000, run: retryFailedWebhooks },

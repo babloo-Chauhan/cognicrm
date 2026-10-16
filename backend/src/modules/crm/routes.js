@@ -128,13 +128,16 @@ async function assertAssignable(orgId, userId) {
   return user;
 }
 
+/** True when this user holds the lead now or held it before: it is theirs to work and to assign on. */
+const sharesLead = (lead, user) => String(lead.ownerId || '') === String(user._id) || (lead.assignees || []).some((a) => String(a) === String(user._id));
+
 /**
  * Who may change a lead's owner: the company admin (team_leads:assign) to anyone or to nobody;
- * the person holding the lead may pass it on to a colleague. Everyone else is refused.
+ * everyone who has held the lead may assign it on to a colleague. Only the admin can unassign.
  */
 function assertMayAssign(req, before, nextOwnerId) {
   if (hasPermission(req.user, 'team_leads:assign')) return;
-  if (String(before.ownerId || '') !== String(req.user._id)) throw forbidden('Only the admin or the person this lead is assigned to can reassign it');
+  if (!sharesLead(before, req.user)) throw forbidden('Only the admin or someone this lead was assigned to can reassign it');
   if (!nextOwnerId) throw forbidden('Only the admin can unassign a lead');
 }
 
@@ -162,7 +165,7 @@ async function leadAssigned(doc, req, owner, previousOwnerId) {
   if (previousOwnerId && String(previousOwnerId) !== String(req.user._id) && String(previousOwnerId) !== String(doc.ownerId || '')) {
     await notify(req.orgId, previousOwnerId, {
       type: 'lead_reassigned', title: `Lead moved: ${doc.name}`,
-      body: owner ? `${req.user.name} assigned it to ${owner.name}. You can still see it.` : `${req.user.name} unassigned it. You can still see it.`,
+      body: owner ? `${req.user.name} assigned it to ${owner.name}. It stays in your leads too.` : `${req.user.name} unassigned it. It stays in your leads too.`,
       data: { leadId: String(doc._id) },
     });
   }
@@ -188,15 +191,19 @@ router.use('/leads', crudRouter(Lead, {
     else await assertAssignable(req.orgId, doc.ownerId);
     doc.assignees = [];
     doc.assignments = [];
+    doc.followUpReminderSentAt = null;
     recordAssignment(doc, null, doc.ownerId, req.user._id);
     if (String(doc.ownerId) !== String(req.user._id)) doc.assignees.push(req.user._id);
     await normalizePhoneField(doc, req);
     await applyScore(scoreLead, doc, req);
   },
   onUpdate: async (doc, before, req) => {
-    // History is written by the server only
+    // History and reminder state are written by the server only
     doc.assignees = before.assignees || [];
     doc.assignments = before.assignments || [];
+    doc.followUpReminderSentAt = before.followUpReminderSentAt || null;
+    // A new follow-up time gets a fresh reminder
+    if (String(before.nextFollowUpAt || '') !== String(doc.nextFollowUpAt || '')) doc.followUpReminderSentAt = null;
     if (String(before.ownerId || '') !== String(doc.ownerId || '')) {
       assertMayAssign(req, before, doc.ownerId);
       const owner = await assertAssignable(req.orgId, doc.ownerId);

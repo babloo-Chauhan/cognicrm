@@ -31,7 +31,7 @@ export function LeadAssignment({ lead, onChanged }) {
     }
   };
   const trail = [...(lead.assignments || [])].reverse();
-  const youHadIt = !isAdmin && String(lead.ownerId) !== String(auth.user?.id);
+  const others = (lead.assignees || []).filter((a) => String(a) !== String(lead.ownerId || ''));
   return (
     <div className="card">
       <div className="card-header"><h3>Assigned to</h3></div>
@@ -46,7 +46,9 @@ export function LeadAssignment({ lead, onChanged }) {
             </div>
           )}
         </div>
-        {youHadIt && <div className="small muted">You passed this lead on. You can still see it, but only the admin or the person who has it now can move it.</div>}
+        {others.length > 0 && (
+          <div className="small muted">Also in the leads of {others.map((id, i) => <span key={String(id)}>{i ? ', ' : ''}<OwnerName id={id} /></span>)} — everyone it was assigned to can work on it and assign it on.</div>
+        )}
         {picking && (
           <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
             <select className="input" value={to} onChange={(e) => setTo(e.target.value)} aria-label="Assign to">
