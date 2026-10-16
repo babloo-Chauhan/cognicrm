@@ -53,6 +53,10 @@ const leadSchema = new Schema({
   source: { type: String, default: 'other' },
   status: { type: String, enum: LEAD_STATUSES, default: 'new' },
   ownerId: { type: ObjectId, ref: 'User' },
+  // Everyone who has held the lead (creator and each assignee). They keep seeing it after passing it on.
+  assignees: [{ type: ObjectId, ref: 'User' }],
+  // Each hand-over, oldest first: who had it, who got it (null = unassigned), who did it, when
+  assignments: [{ _id: false, from: { type: ObjectId, ref: 'User' }, to: { type: ObjectId, ref: 'User' }, by: { type: ObjectId, ref: 'User' }, at: Date }],
   companySize: String,
   industry: String,
   estimatedValue: Number,
@@ -71,6 +75,7 @@ const leadSchema = new Schema({
 leadSchema.index({ organizationId: 1, status: 1, createdAt: -1, _id: -1 });
 leadSchema.index({ organizationId: 1, createdAt: -1, _id: -1 });
 leadSchema.index({ organizationId: 1, ownerId: 1, createdAt: -1, _id: -1 });
+leadSchema.index({ organizationId: 1, assignees: 1, createdAt: -1, _id: -1 });
 leadSchema.index({ organizationId: 1, score: -1, _id: -1 });
 leadSchema.plugin(searchPlugin, { fields: ['name', 'email', 'phone', 'company'] });
 leadSchema.index({ organizationId: 1, email: 1 });

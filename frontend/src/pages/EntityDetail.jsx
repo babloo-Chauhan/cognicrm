@@ -14,6 +14,7 @@ import { EntityForm } from './EntityForm.jsx';
 import { CallbackModal } from '../calling/CallbackModal.jsx';
 import { DocList } from './sales/DocList.jsx';
 import { ProcessSteps } from './sales/common.jsx';
+import { LeadAssignment } from './LeadAssignment.jsx';
 
 const PRIORITY_TONE = { high: 'danger', medium: 'warning', low: '' };
 
@@ -209,6 +210,7 @@ export function EntityDetail({ entity }) {
           </div>
         </div>
         <div className="stack" style={{ gap: 16 }}>
+          {entity === 'leads' && <LeadAssignment lead={data} onChanged={() => { reload(); setTimelineKey((k) => k + 1); }} />}
           <div className="card">
             <div className="card-header"><h3>Details</h3></div>
             <div className="card-body">

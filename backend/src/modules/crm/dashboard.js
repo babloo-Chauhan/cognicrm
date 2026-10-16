@@ -5,6 +5,7 @@ import {
 import { hasPermission } from '../../middleware/auth.js';
 import { defaultPipeline } from './pipelines.js';
 import { cached } from '../../lib/cache.js';
+import { leadScopeFor } from './leadAccess.js';
 
 const router = Router();
 
@@ -31,9 +32,9 @@ async function buildDashboard(req) {
   const [leadStats, customers, dealStats, pipeline, pendingTasks, todaysActivities, upcomingMeetings, paid] = await Promise.all([
     // Three index-backed counts instead of reading every lead
     on('leads') && can('leads:read') ? Promise.all([
-      Lead.countDocuments(org),
-      Lead.countDocuments({ ...org, createdAt: { $gte: monthStart } }),
-      Lead.countDocuments({ ...org, status: { $in: ['converted', 'won'] } }),
+      Lead.countDocuments({ ...org, ...leadScopeFor(req.user) }),
+      Lead.countDocuments({ ...org, ...leadScopeFor(req.user), createdAt: { $gte: monthStart } }),
+      Lead.countDocuments({ ...org, ...leadScopeFor(req.user), status: { $in: ['converted', 'won'] } }),
     ]).then(([total, newThisMonth, converted]) => [{ total, newThisMonth, converted }]) : null,
     on('customers') && can('contacts:read') ? Promise.all([Contact.countDocuments(org), Account.countDocuments(org)]) : null,
     on('deals') && can('deals:read') ? Deal.aggregate([

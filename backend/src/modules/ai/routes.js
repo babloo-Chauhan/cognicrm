@@ -11,6 +11,7 @@ import { getLlm } from './llm.js';
 import { getTranscriber } from './transcription.js';
 import { nextBestAction, salesForecast, scoreDeal, scoreLead } from './insights.js';
 import { generateEmail, qualifyLead, summarizeEmail, summarizeMeeting } from './summaries.js';
+import { leadScopeFor } from '../crm/leadAccess.js';
 import { runAssistant } from './assistant.js';
 import { VOICE_AGENT_TOOLS, TOOLS } from './tools.js';
 import { startOutboundVoiceAgentCall, testVoiceAgent } from '../voiceAgents/runtime.js';
@@ -64,7 +65,7 @@ router.post('/ai/meeting/summarize', requirePermission('ai:use'), aiLimiter, val
   async (req, res) => res.json(await summarizeMeeting(req.orgId, req.body)));
 
 router.post('/ai/qualify/lead/:id', requirePermission('ai:use'), aiLimiter, async (req, res) => {
-  const lead = await Lead.findOne({ _id: req.params.id, organizationId: req.orgId }).lean();
+  const lead = await Lead.findOne({ _id: req.params.id, organizationId: req.orgId, ...leadScopeFor(req.user) }).lean();
   if (!lead) throw notFound('Lead');
   const history = await Activity.find({ organizationId: req.orgId, 'links.leadId': lead._id }).sort({ occurredAt: -1 }).limit(30).lean();
   res.json(await qualifyLead(req.orgId, {

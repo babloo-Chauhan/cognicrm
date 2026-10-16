@@ -38,8 +38,10 @@ const regexSearch = (q, searchFields) => {
  * List filter: company, ?q= search and ?field= filters. Models with search tokens (models/search.js) are
  * searched through their index by word prefix; others with a regex.
  */
-function listFilter(req, searchFields, filterFields, Model) {
+function listFilter(req, searchFields, filterFields, Model, scope) {
   const filter = { organizationId: req.orgId };
+  const only = scope?.(req);
+  if (only) filter.$and = [only];
   const { q } = req.query;
   if (q && String(q).trim() && searchFields.length) {
     const terms = Model?.searchFields && searchTerms(q);
@@ -86,6 +88,7 @@ export function crudRouter(Model, {
   limit, // plan limit key checked before creating (users, customers, leads, deals)
   rules, // form rules (fieldRules.js) checked on create and update
   sortable = ['createdAt', 'updatedAt'], // ?sort= fields clients may use (each needs an index in the model)
+  scope, // (req) => extra filter limiting which records this user may see, or null for all (e.g. own leads only)
 } = {}) {
   const router = Router();
   const name = `${Model.collection.collectionName}`;
@@ -94,7 +97,7 @@ export function crudRouter(Model, {
     // Registered before "/:id" so "export" and "import" are not read as record IDs
     router.get('/export', requirePermission('crm:export'), async (req, res) => {
       const format = fileFormat(req);
-      const result = await streamExport(res, Model, io, listFilter(req, searchFields, filterFields, Model), defaultSort, { format, name });
+      const result = await streamExport(res, Model, io, listFilter(req, searchFields, filterFields, Model, scope), defaultSort, { format, name });
       await audit(req, `${name}.export`, { resourceType: Model.modelName, details: { count: result.count, truncated: result.truncated, format } });
     });
 
@@ -140,7 +143,7 @@ export function crudRouter(Model, {
   });
 
   router.get('/', async (req, res) => {
-    const filter = listFilter(req, searchFields, filterFields, Model);
+    const filter = listFilter(req, searchFields, filterFields, Model, scope);
     const { page, limit } = pageParams(req.query);
     const sort = sortParam(req.query.sort, defaultSort, [...new Set([...sortable, ...Object.keys(defaultSort)])]);
     // _id as a tie-breaker (same direction as the sort, so the indexes in the models serve it) keeps pages
@@ -177,7 +180,7 @@ export function crudRouter(Model, {
   });
 
   router.get('/:id', async (req, res) => {
-    const doc = await Model.findOne({ _id: req.params.id, organizationId: req.orgId });
+    const doc = await Model.findOne({ _id: req.params.id, organizationId: req.orgId, ...(scope?.(req) || {}) });
     if (!doc) throw notFound(Model.modelName);
     res.json(doc);
   });
@@ -200,7 +203,7 @@ export function crudRouter(Model, {
   });
 
   router.patch('/:id', async (req, res) => {
-    const doc = await Model.findOne({ _id: req.params.id, organizationId: req.orgId });
+    const doc = await Model.findOne({ _id: req.params.id, organizationId: req.orgId, ...(scope?.(req) || {}) });
     if (!doc) throw notFound(Model.modelName);
     checkRules(rules, req.body || {}, true);
     const before = doc.toObject();
@@ -212,7 +215,7 @@ export function crudRouter(Model, {
   });
 
   router.delete('/:id', async (req, res) => {
-    const result = await Model.deleteOne({ _id: req.params.id, organizationId: req.orgId });
+    const result = await Model.deleteOne({ _id: req.params.id, organizationId: req.orgId, ...(scope?.(req) || {}) });
     if (!result.deletedCount) throw notFound(Model.modelName);
     res.status(204).end();
   });

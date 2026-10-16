@@ -9,6 +9,11 @@ import { findCustomerByPhone, getCustomerContext } from '../crm/lookup.js';
 import { logActivity } from '../timeline/service.js';
 import { nextBestAction } from './insights.js';
 
+import { leadScopeFor } from '../crm/leadAccess.js';
+
+/** Narrows a lead query to the leads this user may see (employees: their own; admin: all). */
+const ownLeads = (user, q) => { const scope = leadScopeFor(user); return scope ? { ...q, $and: [...(q.$and || []), scope] } : q; };
+
 /**
  * Explicit CRM tools for AI agents (voice agent + sales assistant).
  * - Each tool has a fixed JSON schema, a required permission and a tenant-scoped handler.
@@ -33,7 +38,7 @@ export const TOOLS = {
     description: 'Find a customer (contact or lead) by phone number, email or name.',
     permission: 'crm:read',
     input_schema: { type: 'object', properties: { query: str('Phone, email or name') }, required: ['query'] },
-    async handler({ orgId }, { query }) {
+    async handler({ orgId, user }, { query }) {
       const q = String(query || '').trim();
       if (!q) throw badRequest('query is required');
       if (/^[+\d][\d\s-]{6,}$/.test(q)) {
@@ -46,7 +51,7 @@ export const TOOLS = {
       const rx = new RegExp(escapeRx(q), 'i');
       const [contacts, leads] = await Promise.all([
         Contact.find({ organizationId: orgId, $or: [{ firstName: rx }, { lastName: rx }, { email: rx }, { company: rx }] }).limit(5).lean(),
-        Lead.find({ organizationId: orgId, $or: [{ name: rx }, { email: rx }, { company: rx }] }).limit(5).lean(),
+        Lead.find(ownLeads(user, { organizationId: orgId, $or: [{ name: rx }, { email: rx }, { company: rx }] })).limit(5).lean(),
       ]);
       return {
         contacts: contacts.map((c) => summarize(c, ['firstName', 'lastName', 'email', 'phone', 'company'])),
@@ -84,9 +89,9 @@ export const TOOLS = {
       },
       required: ['leadId'],
     },
-    async handler({ orgId }, input) {
+    async handler({ orgId, user }, input) {
       const res = await Lead.findOneAndUpdate(
-        { _id: oid(input.leadId), organizationId: orgId },
+        ownLeads(user, { _id: oid(input.leadId), organizationId: orgId }),
         pick(input, ['status', 'email', 'company', 'estimatedValue', 'industry', 'companySize']),
         { returnDocument: 'after' },
       ).lean();
@@ -292,7 +297,7 @@ export const TOOLS = {
       if (mine && user) q.ownerId = user._id;
       if (filter === 'hot') q.score = { $gte: 70 };
       if (filter === 'new') q.status = 'new';
-      const leads = await Lead.find(q).sort({ score: -1 }).limit(Math.min(limit, 50)).lean();
+      const leads = await Lead.find(ownLeads(user, q)).sort({ score: -1 }).limit(Math.min(limit, 50)).lean();
       return leads.map((l) => summarize(l, ['name', 'company', 'phone', 'status', 'score']));
     },
   },
@@ -338,11 +343,11 @@ export const TOOLS = {
     description: 'Find leads and contacts that have not been contacted for N days.',
     permission: 'crm:read',
     input_schema: { type: 'object', properties: { days: { type: 'number' }, limit: { type: 'number' } }, required: ['days'] },
-    async handler({ orgId }, { days, limit = 20 }) {
+    async handler({ orgId, user }, { days, limit = 20 }) {
       const cutoff = new Date(Date.now() - Number(days) * 86400000);
       const stale = { $or: [{ lastContactedAt: { $lt: cutoff } }, { lastContactedAt: null, createdAt: { $lt: cutoff } }] };
       const [leads, contacts] = await Promise.all([
-        Lead.find({ organizationId: orgId, status: { $nin: ['converted', 'unqualified'] }, ...stale }).limit(limit).lean(),
+        Lead.find(ownLeads(user, { organizationId: orgId, status: { $nin: ['converted', 'unqualified'] }, ...stale })).limit(limit).lean(),
         Contact.find({ organizationId: orgId, ...stale }).limit(limit).lean(),
       ]);
       return {

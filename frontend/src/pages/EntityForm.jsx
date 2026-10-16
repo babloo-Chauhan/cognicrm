@@ -4,7 +4,9 @@ import { label } from '../lib/format.js';
 import { Field } from '../components/ui.jsx';
 import { ENTITY_CONFIG, validateEntity } from './entities.js';
 import { phoneChars } from '../lib/validation.js';
-import { useTeam } from '../lib/team.js';
+import { OwnerName, useTeam } from '../lib/team.js';
+import { useAuth } from '../lib/auth.jsx';
+import { canReassignLead } from '../lib/leadAccess.js';
 import { useDebounced } from '../lib/hooks.js';
 
 /** Picks an active team member (lead owner, task assignee…). */
@@ -115,6 +117,7 @@ export function EntityForm({ entity, value, onChange, showErrors = false }) {
   // onChange is a state setter: build on the latest value so quick successive changes don't overwrite each other
   const set = (key, v) => onChange((cur) => ({ ...cur, [key]: v }));
   const errors = validateEntity(entity, value);
+  const auth = useAuth();
   return (
     <div className="form-grid">
       {cfg.fields.map((f) => {
@@ -141,7 +144,11 @@ export function EntityForm({ entity, value, onChange, showErrors = false }) {
         } else if (f.type === 'textarea') {
           input = <textarea {...common} value={v || ''} onChange={(e) => set(f.key, e.target.value)} />;
         } else if (f.type === 'user') {
-          input = <UserSelect value={v} onChange={(id) => set(f.key, id)} />;
+          // An existing lead moves only by the admin or the person holding it (see LeadAssignment)
+          const locked = entity === 'leads' && value.id && !canReassignLead(value, auth);
+          input = locked
+            ? <div className="input" aria-disabled="true" title="Only the admin or the person this lead is assigned to can reassign it" style={{ opacity: 0.7 }}><OwnerName id={v} /></div>
+            : <UserSelect value={v} onChange={(id) => set(f.key, id)} />;
         } else if (f.type === 'ref') {
           input = <RefSelect entity={f.ref} value={v} onChange={(id) => set(f.key, id)} />;
         } else if (f.type === 'checkbox') {

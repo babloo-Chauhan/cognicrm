@@ -6,7 +6,15 @@ const crud = (resource, label) => ['create', 'read', 'update', 'delete'].map((a)
 
 export const PERMISSION_GROUPS = [
   { group: 'Team', permissions: [...crud('users', 'Users'), { key: 'roles:manage', label: 'Manage roles & permissions' }] },
-  { group: 'Leads', permissions: crud('leads', 'Leads') },
+  {
+    group: 'Leads',
+    permissions: [
+      ...crud('leads', 'Leads'),
+      // Not under leads:* on purpose: sales roles have leads:*, and these stay with the admin unless granted
+      { key: 'team_leads:view_all', label: "See everyone's leads (others see only leads they have or had)" },
+      { key: 'team_leads:assign', label: 'Assign or unassign any lead (others pass on only their own)' },
+    ],
+  },
   { group: 'Customers', permissions: [...crud('contacts', 'Contacts'), ...crud('accounts', 'Accounts')] },
   { group: 'Deals', permissions: [...crud('deals', 'Deals'), { key: 'pipelines:manage', label: 'Manage pipelines' }] },
   { group: 'Work', permissions: [...crud('tasks', 'Tasks'), ...crud('notes', 'Notes'), ...crud('appointments', 'Appointments')] },
