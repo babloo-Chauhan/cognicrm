@@ -27,6 +27,8 @@ import './App.css';
 
 // The call center bundles charts and the IVR node editor, so it loads on demand; so does the super-admin console.
 const CallingPage = lazy(() => import('./pages/calling/CallingPage.jsx').then((m) => ({ default: m.CallingPage })));
+const Reports = lazy(() => import('./pages/reports/Reports.jsx').then((m) => ({ default: m.Reports })));
+const EmployeeReport = lazy(() => import('./pages/reports/EmployeeReport.jsx').then((m) => ({ default: m.EmployeeReport })));
 const SuperAdminApp = lazy(() => import('./pages/superadmin/SuperAdminApp.jsx').then((m) => ({ default: m.SuperAdminApp })));
 
 const ENTITIES = ['leads', 'contacts', 'accounts', 'deals', 'tickets', 'tasks', 'products'];
@@ -34,6 +36,15 @@ const NO_DETAIL = ['tasks', 'products'];
 // Plan module behind each page (see backend src/lib/modules.js)
 const MODULE_OF = { leads: 'leads', contacts: 'customers', accounts: 'customers', deals: 'deals', tickets: 'support', tasks: 'tasks', products: 'invoices' };
 const gate = (module, el) => <ModuleGate module={module}>{el}</ModuleGate>;
+
+/** Pages for the company admin only (or a custom role the admin granted the permission to). */
+function AdminOnly({ permission, children }) {
+  const { can } = useAuth();
+  if (!can(permission)) {
+    return <div className="card"><div className="card-body"><h3>Admins only</h3><p className="muted">Reports are visible to your company admin. Ask them if you need access.</p></div></div>;
+  }
+  return <Suspense fallback={<Loading />}>{children}</Suspense>;
+}
 
 function Shell() {
   const { user, loading, connectionError, refresh, logout } = useAuth();
@@ -66,6 +77,8 @@ function Shell() {
             {ENTITIES.map((e) => <Route key={e} path={e} element={gate(MODULE_OF[e], <EntityList entity={e} />)} />)}
             {ENTITIES.filter((e) => !NO_DETAIL.includes(e)).map((e) => <Route key={`${e}-d`} path={`${e}/:id`} element={gate(MODULE_OF[e], <EntityDetail entity={e} />)} />)}
             <Route path="pipelines" element={gate('deals', <Pipelines />)} />
+            <Route path="reports" element={<AdminOnly permission="reports:team"><Reports /></AdminOnly>} />
+            <Route path="reports/employees/:id" element={<AdminOnly permission="reports:team"><EmployeeReport /></AdminOnly>} />
             <Route path="sales" element={gate('invoices', <SalesOverview />)} />
             {[['quote', 'quotes'], ['invoice', 'invoices']].map(([kind, path]) => [
               <Route key={`${path}-l`} path={path} element={gate('invoices', <DocList kind={kind} />)} />,

@@ -16,6 +16,7 @@ import authRoutes, { publicAuthRouter } from './modules/auth/routes.js';
 import crmRoutes from './modules/crm/routes.js';
 import pipelineRoutes from './modules/crm/pipelines.js';
 import dashboardRoutes from './modules/crm/dashboard.js';
+import reportRoutes from './modules/reports/routes.js';
 import callRoutes from './modules/calls/routes.js';
 import contactCenterRoutes from './modules/contactCenter/routes.js';
 import opsRoutes, { publicRouter as recordingPublicRoutes } from './modules/contactCenter/opsRoutes.js';
@@ -126,6 +127,7 @@ export function createApp() {
   api.use(teamRoutes);
   api.use(billingRoutes);
   api.use(dashboardRoutes);
+  api.use(reportRoutes);
   api.use(pipelineRoutes);
   api.use(crmRoutes);
   api.use(callRoutes);

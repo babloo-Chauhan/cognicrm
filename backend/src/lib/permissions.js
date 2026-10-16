@@ -13,7 +13,7 @@ export const PERMISSION_GROUPS = [
   { group: 'Support', permissions: crud('tickets', 'Tickets') },
   { group: 'Sales documents', permissions: [{ key: 'sales:read', label: 'View quotes, invoices, products' }, { key: 'sales:write', label: 'Create & edit quotes, invoices, products' }, ...crud('orders', 'Orders')] },
   { group: 'Data', permissions: [{ key: 'crm:read', label: 'Read CRM (assistant tools)' }, { key: 'crm:write', label: 'Write CRM (assistant tools)' }, { key: 'crm:import', label: 'Import data' }, { key: 'crm:export', label: 'Export data' }] },
-  { group: 'Reports', permissions: [{ key: 'analytics:read', label: 'Reports & analytics' }, { key: 'audit:read', label: 'Audit log' }] },
+  { group: 'Reports', permissions: [{ key: 'analytics:read', label: 'Reports & analytics' }, { key: 'reports:team', label: 'Employee performance reports' }, { key: 'audit:read', label: 'Audit log' }] },
   {
     group: 'Calling',
     permissions: [

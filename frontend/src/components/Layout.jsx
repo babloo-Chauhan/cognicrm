@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '@/lib/theme';
 import {
-  Bell, Bot, Building2, ChartNoAxesCombined, ChevronDown, ChevronsUpDown, CircleHelp, Contact, CreditCard, FileText, Handshake,
+  Bell, Bot, Building2, ChartColumnBig, ChartNoAxesCombined, ChevronDown, ChevronsUpDown, CircleHelp, Contact, CreditCard, FileText, Handshake,
   Inbox, KeyRound, LayoutDashboard, ListChecks, LogOut, Menu, Mic, Monitor, Moon, Package, Phone, Plug, Plus, Receipt, Route, Search, Settings,
   Sparkles, Sun, Target, Ticket, Users, Zap,
 } from 'lucide-react';
@@ -37,7 +37,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 const NAV = [
   {
     group: 'Workspace',
-    items: [{ to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true }],
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/reports', label: 'Reports', icon: ChartColumnBig, permission: 'reports:team' },
+    ],
   },
   {
     group: 'CRM',

@@ -44,7 +44,8 @@ export function EntityList({ entity }) {
   const [params, setParams] = useSearchParams();
   // ?q= comes from the global search / command palette
   const [q, setQ] = useState(() => params.get('q') || '');
-  const [filter, setFilter] = useState({});
+  // ?ownerId= comes from the employee report ("Open their leads")
+  const [filter, setFilter] = useState(() => (params.get('ownerId') ? { ownerId: params.get('ownerId') } : {}));
   const team = useTeam();
   const { user } = useAuth();
   const [creating, setCreating] = useState(null);
