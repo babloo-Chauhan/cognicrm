@@ -8,6 +8,7 @@ import { dateTime, duration, label, money } from '../../lib/format.js';
 import { DataTable, ErrorAlert, Loading, Stat, StatusBadge } from '../../components/ui.jsx';
 import { useAsync } from '../../lib/hooks.js';
 import { PeriodPicker } from './common.jsx';
+import { EmployeeCalls } from './EmployeeCalls.jsx';
 import { bucketLabel, PALETTE, usePeriod } from './reportUtils.js';
 
 const ACTIVITY_ICON = {
@@ -88,6 +89,9 @@ export function EmployeeReport() {
         </div>
       </div>
 
+      <EmployeeCalls employee={e} summary={data.calls} period={period} />
+
+      <h2 style={{ margin: '24px 0 12px' }}>Follow-ups</h2>
       <div className="grid grid-2" style={{ marginBottom: 16 }}>
         <div className="card">
           <div className="card-header"><h3>Neglected leads</h3><span className="small muted">Open, not contacted for 7+ days</span></div>

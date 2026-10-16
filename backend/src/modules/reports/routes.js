@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requirePermission } from '../../middleware/auth.js';
 import { cached } from '../../lib/cache.js';
 import { badRequest, notFound } from '../../lib/errors.js';
-import { employeeReport, leadReport, teamReport } from './service.js';
+import { employeeCalls, employeeReport, leadReport, teamReport } from './service.js';
 
 /**
  * Employee-wise reports for the company admin. `reports:team` is only in the admin's `*` by default;
@@ -29,6 +29,11 @@ router.get('/reports/employees/:id', async (req, res) => {
   const report = await employeeReport(req.orgId, req.params.id, req.query);
   if (!report) throw notFound('Employee');
   res.json(report);
+});
+
+router.get('/reports/employees/:id/calls', async (req, res) => {
+  if (!/^[a-f0-9]{24}$/i.test(req.params.id)) throw badRequest('Invalid employee');
+  res.json(await employeeCalls(req.orgId, req.params.id, req.query));
 });
 
 export default router;

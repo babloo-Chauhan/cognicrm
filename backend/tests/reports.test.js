@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addUser, http, registerOrg, useDatabase } from './helpers.js';
-import { Lead, Task } from '../src/models/index.js';
+import { Call, Lead, Task } from '../src/models/index.js';
 
 useDatabase();
 
@@ -78,5 +78,44 @@ describe('employee reports', () => {
     expect(one.body.recentActivity.length).toBeGreaterThan(0);
     // Someone from another company is not found
     expect((await http().get(`/api/v1/reports/employees/${other.user.id}`).set(admin.auth)).status).toBe(404);
+  });
+
+  it('shows how many calls an employee made, for how long, and which have recordings', async () => {
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const sita = await addUser(admin, { role: 'sales_executive', name: 'Sita' });
+    const lead = await http().post('/api/v1/leads').set(ravi.auth).send({ name: 'Anil Gupta', phone: '9876501234' }).then((r) => r.body);
+    const at = (minsAgo) => new Date(Date.now() - minsAgo * 60000);
+    const base = { organizationId: admin.org.id, agentId: ravi.user.id, direction: 'outbound', customerPhone: '+919876501234' };
+    await Call.create([
+      { ...base, status: 'completed', startedAt: at(30), answeredAt: at(30), durationSeconds: 120, related: { leadId: lead.id },
+        disposition: { code: 'interested', label: 'Interested', notes: 'Wants a demo' }, hasRecording: true },
+      { ...base, status: 'completed', mode: 'native', startedAt: at(20), answeredAt: at(20), durationSeconds: 300 },
+      { ...base, status: 'no_answer', startedAt: at(10), durationSeconds: 0 },
+      { ...base, direction: 'inbound', status: 'completed', startedAt: at(5), answeredAt: at(5), durationSeconds: 60 },
+      { ...base, agentId: sita.user.id, status: 'completed', startedAt: at(5), answeredAt: at(5), durationSeconds: 999 },
+    ]);
+    const q = { from: '2020-01-01', to: today() };
+    const rep = await http().get(`/api/v1/reports/employees/${ravi.user.id}`).query(q).set(admin.auth);
+    expect(rep.body.calls).toMatchObject({
+      total: 4, outbound: 3, inbound: 1, connected: 3, notConnected: 1, talkSeconds: 480, averageSeconds: 160,
+      longestSeconds: 300, recorded: 1, estimatedCalls: 1, connectRate: 75,
+    });
+    expect(rep.body.calls.byHour).toHaveLength(24);
+    expect(rep.body.calls.byOutcome).toEqual(expect.arrayContaining([
+      { outcome: 'Interested', count: 1 }, { outcome: 'Not connected', count: 1 }, { outcome: 'Connected (no outcome chosen)', count: 2 },
+    ]));
+
+    const list = await http().get(`/api/v1/reports/employees/${ravi.user.id}/calls`).query(q).set(admin.auth);
+    expect(list.body.total).toBe(4);
+    expect(list.body.items.map((c) => c.durationSeconds)).toEqual([60, 0, 300, 120]); // newest first
+    const first = list.body.items.at(-1);
+    expect(first).toMatchObject({ customer: 'Anil Gupta', leadId: lead.id, outcome: 'Interested', notes: 'Wants a demo', hasRecording: true, connected: true });
+    expect(list.body.items[2].durationEstimated).toBe(true);
+    const recorded = await http().get(`/api/v1/reports/employees/${ravi.user.id}/calls`).query({ ...q, filter: 'recorded' }).set(admin.auth);
+    expect(recorded.body.items.map((c) => c.id)).toEqual([first.id]);
+    const missed = await http().get(`/api/v1/reports/employees/${ravi.user.id}/calls`).query({ ...q, filter: 'missed' }).set(admin.auth);
+    expect(missed.body.total).toBe(1);
+    expect((await http().get(`/api/v1/reports/employees/${ravi.user.id}/calls`).set(sita.auth)).status).toBe(403);
   });
 });

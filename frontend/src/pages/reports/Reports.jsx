@@ -14,7 +14,7 @@ import { bucketLabel, downloadCsv, PALETTE, usePeriod } from './reportUtils.js';
 
 const SORTS = [
   ['wonValue', 'Revenue won'], ['leadsConverted', 'Leads converted'], ['conversionRate', 'Conversion %'], ['leadsAssigned', 'Leads assigned'],
-  ['calls', 'Calls made'], ['remarks', 'Remarks written'], ['tasksDone', 'Tasks done'], ['collected', 'Money collected'], ['staleLeads', 'Neglected leads'],
+  ['calls', 'Calls made'], ['talkSeconds', 'Talk time'], ['remarks', 'Remarks written'], ['tasksDone', 'Tasks done'], ['collected', 'Money collected'], ['staleLeads', 'Neglected leads'],
 ];
 
 const EXPORT_COLUMNS = [
@@ -75,7 +75,7 @@ function TeamTab({ period }) {
             { key: 'name', label: 'Employee', render: (e) => <div><strong>{e.name}</strong>{!e.active && <span className="badge" style={{ marginLeft: 6 }}>inactive</span>}<div className="small muted">{e.designation || label(e.role)}</div></div> },
             { key: 'leads', label: 'Leads', render: (e) => <div>{e.leadsAssigned}<div className="small muted">{e.openLeads} open now</div></div> },
             { key: 'conv', label: 'Converted', render: (e) => <div>{e.leadsConverted}<div className="small muted">{e.conversionRate}%</div></div> },
-            { key: 'calls', label: 'Calls', render: (e) => <div>{e.calls}<div className="small muted">{e.connectedCalls} connected</div></div> },
+            { key: 'calls', label: 'Calls', render: (e) => <div>{e.calls}<div className="small muted">{e.connectedCalls} connected · {duration(e.talkSeconds)}</div></div> },
             { key: 'remarks', label: 'Remarks' , render: (e) => e.remarks },
             { key: 'tasks', label: 'Tasks done', render: (e) => <div>{e.tasksDone}{e.overdueTasks > 0 && <div className="small" style={{ color: 'var(--danger)' }}>{e.overdueTasks} overdue</div>}</div> },
             { key: 'won', label: 'Won', render: (e) => <div>{money(e.wonValue)}<div className="small muted">{e.dealsWon} deals</div></div> },

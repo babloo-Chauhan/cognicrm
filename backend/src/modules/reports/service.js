@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import {
-  Activity, Call, Deal, Invoice, Lead, Note, Organization, Quote, Task, User,
+  Activity, Call, Contact, Deal, Invoice, Lead, Note, Organization, Quote, Task, User,
 } from '../../models/index.js';
 
 const oid = (v) => new mongoose.Types.ObjectId(String(v));
@@ -237,6 +237,106 @@ export async function leadReport(orgId, query) {
   };
 }
 
+const answered = { $cond: [{ $ifNull: ['$answeredAt', false] }, 1, 0] };
+
+/**
+ * One employee's calls in the period: totals, talk time, when in the day they call, and how calls ended.
+ * Calls from the mobile app go through the phone's own dialer, so their duration is the time the person
+ * spent away from the app (confirmed by them) — `estimatedCalls` says how many those are.
+ */
+async function callSummary(orgId, userId, period) {
+  const match = { organizationId: oid(orgId), agentId: oid(userId), startedAt: { $gte: period.start, $lt: period.end } };
+  const [[k], byHour, byOutcome] = await Promise.all([
+    Call.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          outbound: { $sum: { $cond: [{ $eq: ['$direction', 'outbound'] }, 1, 0] } },
+          inbound: { $sum: { $cond: [{ $eq: ['$direction', 'inbound'] }, 1, 0] } },
+          connected: { $sum: answered },
+          talkSeconds: { $sum: { $ifNull: ['$durationSeconds', 0] } },
+          longestSeconds: { $max: { $ifNull: ['$durationSeconds', 0] } },
+          recorded: { $sum: { $cond: ['$hasRecording', 1, 0] } },
+          estimated: { $sum: { $cond: [{ $eq: ['$mode', 'native'] }, 1, 0] } },
+          first: { $min: '$startedAt' },
+          last: { $max: '$startedAt' },
+        },
+      },
+    ]),
+    Call.aggregate([
+      { $match: match },
+      { $group: { _id: { $hour: { date: '$startedAt', timezone: period.timeZone } }, calls: { $sum: 1 }, connected: { $sum: answered } } },
+    ]),
+    Call.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: { $ifNull: ['$disposition.label', { $cond: [{ $ifNull: ['$answeredAt', false] }, 'Connected (no outcome chosen)', 'Not connected'] }] },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+    ]),
+  ]);
+  const c = k || { total: 0, outbound: 0, inbound: 0, connected: 0, talkSeconds: 0, longestSeconds: 0, recorded: 0, estimated: 0, first: null, last: null };
+  const hours = new Map(byHour.map((h) => [h._id, h]));
+  return {
+    total: c.total, outbound: c.outbound, inbound: c.inbound, connected: c.connected, notConnected: c.total - c.connected,
+    connectRate: rate(c.connected, c.total), talkSeconds: c.talkSeconds,
+    averageSeconds: c.connected ? Math.round(c.talkSeconds / c.connected) : 0, longestSeconds: c.longestSeconds,
+    recorded: c.recorded, estimatedCalls: c.estimated, firstCallAt: c.first, lastCallAt: c.last,
+    byHour: Array.from({ length: 24 }, (_, h) => ({ hour: h, calls: hours.get(h)?.calls || 0, connected: hours.get(h)?.connected || 0 })),
+    byOutcome: byOutcome.map((o) => ({ outcome: o._id, count: o.count })),
+  };
+}
+
+const CALL_FILTERS = {
+  connected: { answeredAt: { $ne: null } },
+  missed: { answeredAt: null },
+  recorded: { hasRecording: true },
+  outbound: { direction: 'outbound' },
+  inbound: { direction: 'inbound' },
+};
+
+/** One employee's calls, newest first, with who they spoke to. */
+export async function employeeCalls(orgId, userId, query) {
+  const period = await reportPeriod(orgId, query);
+  const filter = {
+    organizationId: orgId, agentId: userId, startedAt: { $gte: period.start, $lt: period.end }, ...(CALL_FILTERS[query.filter] || {}),
+  };
+  const limit = Math.min(Math.max(Number(query.limit) || 25, 1), 100);
+  const page = Math.max(Number(query.page) || 1, 1);
+  const [total, calls] = await Promise.all([
+    Call.countDocuments(filter),
+    Call.find(filter).sort({ startedAt: -1 }).skip((page - 1) * limit).limit(limit)
+      .select('direction status mode customerPhone startedAt answeredAt durationSeconds disposition notes hasRecording hasTranscript related source').lean(),
+  ]);
+  const ids = (key) => [...new Set(calls.map((c) => c.related?.[key]).filter(Boolean).map(String))];
+  const [leads, contacts] = await Promise.all([
+    Lead.find({ organizationId: orgId, _id: { $in: ids('leadId') } }).select('name company').lean(),
+    Contact.find({ organizationId: orgId, _id: { $in: ids('contactId') } }).select('firstName lastName company').lean(),
+  ]);
+  const leadName = new Map(leads.map((l) => [String(l._id), l.name]));
+  const contactName = new Map(contacts.map((c) => [String(c._id), `${c.firstName} ${c.lastName || ''}`.trim()]));
+  return {
+    period: { from: period.from, to: period.to, timeZone: period.timeZone },
+    total, page, limit,
+    items: calls.map((c) => {
+      const leadId = c.related?.leadId ? String(c.related.leadId) : null;
+      const contactId = c.related?.contactId ? String(c.related.contactId) : null;
+      return {
+        id: String(c._id), direction: c.direction, status: c.status, startedAt: c.startedAt, connected: Boolean(c.answeredAt),
+        durationSeconds: c.durationSeconds || 0, durationEstimated: c.mode === 'native', phone: c.customerPhone || '',
+        customer: (contactId && contactName.get(contactId)) || (leadId && leadName.get(leadId)) || '', leadId, contactId,
+        outcome: c.disposition?.label || '', notes: c.disposition?.notes || c.notes || '',
+        hasRecording: Boolean(c.hasRecording), hasTranscript: Boolean(c.hasTranscript), source: c.source || '',
+      };
+    }),
+  };
+}
+
 /** One employee: their numbers, day-by-day work, leads by status, recent activity and what is overdue. */
 export async function employeeReport(orgId, userId, query) {
   const period = await reportPeriod(orgId, query);
@@ -245,18 +345,20 @@ export async function employeeReport(orgId, userId, query) {
   const org = oid(orgId);
   const me = oid(userId);
   const inPeriod = { $gte: period.start, $lt: period.end };
-  const [leadsByDay, callsByDay, remarksByDay, leadStatus, recent, overdueTasks, leads] = await Promise.all([
+  const [leadsByDay, callsByDay, remarksByDay, leadStatus, recent, overdueTasks, leads, calls] = await Promise.all([
     countsByDay(Lead, { organizationId: org, ownerId: me, createdAt: inPeriod }, 'createdAt', period),
     countsByDay(Call, { organizationId: org, agentId: me, startedAt: inPeriod }, 'startedAt', period),
     countsByDay(Note, { organizationId: org, authorId: me, createdAt: inPeriod }, 'createdAt', period),
     Lead.aggregate([{ $match: { organizationId: org, ownerId: me, createdAt: inPeriod } }, { $group: { _id: '$status', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
     Activity.find({ organizationId: orgId, userId, occurredAt: inPeriod }).sort({ occurredAt: -1 }).limit(30).select('type title occurredAt links').lean(),
     Task.find({ organizationId: orgId, assigneeId: userId, status: 'open', dueAt: { $lt: new Date() } }).sort({ dueAt: 1 }).limit(20).select('title dueAt priority related').lean(),
-    (await leadReport(orgId, { ...query, ownerId: userId })).staleLeads,
+    leadReport(orgId, { ...query, ownerId: userId }).then((r) => r.staleLeads),
+    callSummary(orgId, userId, period),
   ]);
   return {
     period: { from: period.from, to: period.to, timeZone: period.timeZone },
     employee: stats,
+    calls,
     bucket: bucketOf(period),
     byDay: fillDays(period, { leads: leadsByDay, calls: callsByDay, remarks: remarksByDay }),
     leadsByStatus: leadStatus.map((x) => ({ status: x._id, count: x.count })),
