@@ -194,3 +194,36 @@ describe('pipeline board', () => {
     expect((await http().get('/api/v1/analytics/me?from=2026-01-01').set(admin.auth)).status).toBe(200);
   });
 });
+
+describe('record owners', () => {
+  it('deals, contacts and accounts belong to their creator unless an owner is chosen', async () => {
+    const admin = await registerOrg();
+    const other = await registerOrg('Other Co');
+    for (const [path, body] of [['/api/v1/deals', { name: 'Big order' }], ['/api/v1/contacts', { firstName: 'Asha' }], ['/api/v1/accounts', { name: 'Acme' }]]) {
+      const created = await http().post(path).set(admin.auth).send(body);
+      expect(created.status).toBe(201);
+      expect(String(created.body.ownerId)).toBe(admin.user.id);
+      // someone from another company can't be made the owner
+      const bad = await http().patch(`${path}/${created.body.id}`).set(admin.auth).send({ ownerId: other.user.id });
+      expect(bad.status).toBe(400);
+    }
+    expect((await http().get(`/api/v1/deals?ownerId=${admin.user.id}`).set(admin.auth)).body.total).toBe(1);
+  });
+});
+
+describe('AI assistant list tools', () => {
+  it('list the whole company by default and only your own with mine=true', async () => {
+    const { TOOLS } = await import('../src/modules/ai/tools.js');
+    const { User } = await import('../src/models/index.js');
+    const admin = await registerOrg();
+    const me = await User.findById(admin.user.id).lean();
+    const otherUser = (await http().post('/api/v1/users').set(admin.auth).send({ name: 'Rohit Mehta', email: 'rohit@acme.in', password: 'password123', role: 'sales_executive' })).body;
+    await http().post('/api/v1/deals').set(admin.auth).send({ name: 'Mine', value: 10 });
+    await http().post('/api/v1/deals').set(admin.auth).send({ name: 'Rohit deal', value: 20, ownerId: otherUser.id });
+    const ctx = { orgId: admin.org.id, user: me };
+    expect((await TOOLS.list_deals.handler(ctx, {})).map((d) => d.name).sort()).toEqual(['Mine', 'Rohit deal']);
+    expect((await TOOLS.list_deals.handler(ctx, { mine: true })).map((d) => d.name)).toEqual(['Mine']);
+    await http().post('/api/v1/leads').set(admin.auth).send({ name: 'Lead Rohit', ownerId: otherUser.id });
+    expect((await TOOLS.list_leads.handler(ctx, {})).map((l) => l.name)).toContain('Lead Rohit');
+  });
+});

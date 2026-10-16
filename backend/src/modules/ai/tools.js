@@ -281,13 +281,13 @@ export const TOOLS = {
 
   // ---------------------------------------------------------- assistant read tools
   list_leads: {
-    description: 'List leads. filter "hot" returns high-score leads; "mine" restricts to the current user.',
+    description: 'List leads. filter "hot" returns high-score leads. Set mine=true only when the user asks about their own leads ("my leads"); otherwise all leads of the company are listed.',
     permission: 'crm:read',
     input_schema: {
       type: 'object',
       properties: { filter: { type: 'string', enum: ['hot', 'new', 'all'] }, mine: { type: 'boolean' }, limit: { type: 'number' } },
     },
-    async handler({ orgId, user }, { filter = 'all', mine = true, limit = 10 }) {
+    async handler({ orgId, user }, { filter = 'all', mine = false, limit = 10 }) {
       const q = { organizationId: orgId, status: { $ne: 'converted' } };
       if (mine && user) q.ownerId = user._id;
       if (filter === 'hot') q.score = { $gte: 70 };
@@ -298,10 +298,10 @@ export const TOOLS = {
   },
 
   list_deals: {
-    description: 'List open deals. needsFollowUp=true returns deals with no activity in 7+ days or overdue close dates.',
+    description: 'List open deals. needsFollowUp=true returns deals with no activity in 7+ days or overdue close dates. Set mine=true only when the user asks about their own deals ("my deals"); otherwise all open deals of the company are listed.',
     permission: 'crm:read',
     input_schema: { type: 'object', properties: { needsFollowUp: { type: 'boolean' }, mine: { type: 'boolean' }, limit: { type: 'number' } } },
-    async handler({ orgId, user }, { needsFollowUp = false, mine = true, limit = 10 }) {
+    async handler({ orgId, user }, { needsFollowUp = false, mine = false, limit = 10 }) {
       const q = { organizationId: orgId, stage: { $nin: ['won', 'lost'] } };
       if (mine && user) q.ownerId = user._id;
       if (needsFollowUp) {

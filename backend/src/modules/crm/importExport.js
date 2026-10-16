@@ -42,6 +42,8 @@ export const IO_SPECS = {
       { key: 'industry', header: 'Industry', example: 'Retail' },
       { key: 'companySize', header: 'Company Size', suggest: COMPANY_SIZES, example: '11-50' },
       { key: 'estimatedValue', header: 'Estimated Value', type: 'number', example: 50000 },
+      { key: 'requirement', header: 'Requirement', aliases: ['requirements', 'need', 'product interest'], example: '50 office chairs' },
+      { key: 'notes', header: 'Remarks', aliases: ['remark', 'notes', 'comments'], example: 'Call back after Diwali' },
       ...OPT_OUTS,
       OWNER,
       { key: 'score', header: 'Score', type: 'number', exportOnly: true },

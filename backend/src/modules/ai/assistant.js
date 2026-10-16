@@ -42,6 +42,8 @@ export async function runAssistant(orgId, user, { message, history = [], context
     `Today is ${new Date().toISOString().slice(0, 10)}. The user is ${user.name} (role: ${user.role}).`,
     'Use the provided tools to read or change CRM data. Never invent records, numbers or ids.',
     'Answer concisely. Users may write in English, Hindi or Hinglish; reply in the same style.',
+    // The web and mobile chat bubbles render only **bold** and "- " bullets
+    'Format replies as short sentences or "- " bullet lists, using **bold** for names. Never use tables, headings or code blocks.',
     context.entityType ? `The user is currently viewing ${context.entityType} ${context.entityId}.` : '',
   ].filter(Boolean).join('\n');
 

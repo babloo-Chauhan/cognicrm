@@ -63,7 +63,8 @@ const leadSchema = new Schema({
   scoreFactors: [{ _id: false, factor: String, points: Number, detail: String }],
   lastContactedAt: Date,
   convertedContactId: { type: ObjectId, ref: 'Contact' },
-  notes: String,
+  requirement: String, // what the customer needs
+  notes: String, // remarks typed on the lead form; later remarks are Notes linked to the lead
   tags: [String],
   ...commonPrefs,
 });

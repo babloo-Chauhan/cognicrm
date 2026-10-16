@@ -10,6 +10,16 @@ const EXAMPLES = [
   "Find customers who haven't been contacted in 7 days.",
 ];
 
+/** AI replies use light markdown: **bold** and "- " / "* " bullets. Rendered as text, never as HTML. */
+function RichText({ text }) {
+  return String(text || '').split('\n').map((line, i) => {
+    const bullet = /^\s*[-*]\s+/.test(line);
+    const body = bullet ? line.replace(/^\s*[-*]\s+/, '') : line;
+    const parts = body.split(/(\*\*[^*]+\*\*)/g).map((part, j) => (/^\*\*[^*]+\*\*$/.test(part) ? <strong key={j}>{part.slice(2, -2)}</strong> : part));
+    return <div key={i} style={bullet ? { paddingLeft: 14, textIndent: -10 } : undefined}>{bullet ? '• ' : ''}{parts}{!line && ' '}</div>;
+  });
+}
+
 export function Assistant() {
   const { dial } = useCalls();
   const [messages, setMessages] = useState([]);
@@ -58,7 +68,7 @@ export function Assistant() {
             )}
             {messages.map((m, i) => (
               <div key={i} className={`chat-msg ${m.role === 'user' ? 'user' : ''}`} style={m.role === 'error' ? { background: 'var(--danger-soft)', color: 'var(--danger)' } : undefined}>
-                {m.content}
+                {m.role === 'assistant' ? <RichText text={m.content} /> : m.content}
                 {m.actions?.map((a, j) => a.type === 'call' && (
                   <div key={j} style={{ marginTop: 8 }}>
                     <button type="button" className="btn btn-sm btn-success" onClick={() => dial(a.phone, { name: a.name, related: { contactId: a.contactId, leadId: a.leadId } })}>📞 Call {a.name}</button>

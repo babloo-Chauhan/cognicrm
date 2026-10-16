@@ -127,6 +127,7 @@ export function EntityForm({ entity, value, onChange, showErrors = false }) {
           // These are customers' details, not the user's: keep Chrome from offering its own name / address.
           // Chrome ignores "off" for address autofill but skips fields whose token it does not recognise.
           autoComplete: 'crm-record',
+          placeholder: f.placeholder,
           onBlur: () => setTouched((t) => (t[f.key] ? t : { ...t, [f.key]: true })),
         };
         let input;

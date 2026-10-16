@@ -33,6 +33,18 @@ async function normalizePhoneField(doc, req) {
   }
 }
 
+/**
+ * Records belong to whoever creates them unless an owner is chosen (as leads and tasks already did), so
+ * "my deals / my contacts" filters, the app's Mine toggle and the AI assistant's "my …" questions work.
+ */
+async function defaultOwner(doc, req) {
+  if (!doc.ownerId) doc.ownerId = req.user._id;
+  else await assertAssignable(req.orgId, doc.ownerId);
+}
+async function ownerChanged(doc, before, req) {
+  if (doc.ownerId && String(before.ownerId || '') !== String(doc.ownerId)) await assertAssignable(req.orgId, doc.ownerId);
+}
+
 router.use('/contacts', crudRouter(Contact, {
   rules: FIELD_RULES.contacts,
   resource: 'contacts',
@@ -40,8 +52,8 @@ router.use('/contacts', crudRouter(Contact, {
   io: IO_SPECS.contacts,
   searchFields: ['firstName', 'lastName', 'email', 'phone', 'company'],
   filterFields: ['accountId', 'ownerId'],
-  onCreate: normalizePhoneField,
-  onUpdate: (doc, _b, req) => normalizePhoneField(doc, req),
+  onCreate: async (doc, req) => { await defaultOwner(doc, req); await normalizePhoneField(doc, req); },
+  onUpdate: async (doc, before, req) => { await ownerChanged(doc, before, req); await normalizePhoneField(doc, req); },
   activity: {
     type: 'contact_created',
     title: (d) => `Contact created: ${d.firstName} ${d.lastName || ''}`.trim(),
@@ -56,6 +68,8 @@ router.use('/accounts', crudRouter(Account, {
   io: IO_SPECS.accounts,
   searchFields: ['name', 'industry', 'website'],
   filterFields: ['ownerId', 'industry'],
+  onCreate: defaultOwner,
+  onUpdate: ownerChanged,
   activity: { type: 'account_created', title: (d) => `Account created: ${d.name}`, related: (d) => ({ accountId: d._id }) },
 }));
 
@@ -86,6 +100,13 @@ router.post('/leads/:id/convert', requirePermission('leads:update'), requirePerm
     deal = await Deal.create({
       organizationId: req.orgId, name: req.body?.dealName || `${lead.company || lead.name} deal`,
       value: lead.estimatedValue || 0, contactId: contact._id, accountId: account?._id, leadId: lead._id, ownerId: lead.ownerId,
+    });
+  }
+  const carried = [lead.requirement && `Requirement: ${lead.requirement}`, lead.notes && `Remarks: ${lead.notes}`].filter(Boolean).join('\n');
+  if (carried) {
+    await Note.create({
+      organizationId: req.orgId, body: carried, authorId: req.user._id,
+      related: { leadId: lead._id, contactId: contact._id, dealId: deal?._id, accountId: account?._id },
     });
   }
   lead.status = 'converted';
@@ -166,12 +187,13 @@ router.use('/deals', crudRouter(Deal, {
   io: IO_SPECS.deals,
   searchFields: ['name'],
   filterFields: ['stage', 'ownerId', 'accountId', 'contactId', 'pipelineId'],
-  onCreate: (doc, req) => validateDealStage(doc, req.orgId),
+  onCreate: async (doc, req) => { await defaultOwner(doc, req); await validateDealStage(doc, req.orgId); },
   activity: {
     type: 'deal_created', title: (d) => `Deal created: ${d.name}`,
     related: (d) => ({ dealId: d._id, contactId: d.contactId, accountId: d.accountId, leadId: d.leadId }),
   },
   onUpdate: async (doc, before, req) => {
+    await ownerChanged(doc, before, req);
     if (before.stage !== doc.stage || String(before.pipelineId) !== String(doc.pipelineId)) await validateDealStage(doc, req.orgId);
     if (before.stage !== doc.stage) {
       doc.lastActivityAt = new Date();
@@ -216,7 +238,12 @@ router.use('/tasks', crudRouter(Task, {
 router.use('/notes', crudRouter(Note, {
   resource: 'notes',
   searchFields: ['body'],
-  onCreate: async (doc, req) => { doc.authorId = req.user._id; },
+  filterFields: ['related.leadId', 'related.contactId', 'related.dealId', 'related.accountId', 'related.ticketId'],
+  onCreate: async (doc, req) => {
+    doc.body = String(doc.body || '').trim();
+    if (!doc.body) throw badRequest('Write a remark first');
+    doc.authorId = req.user._id;
+  },
   activity: { type: 'note', title: (d) => d.body.slice(0, 120), related: (d) => d.related || {} },
 }));
 

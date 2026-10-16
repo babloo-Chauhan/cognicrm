@@ -64,6 +64,36 @@ describe('CRM records & timeline', () => {
     expect(acctTl.body.items.map((i) => i.type)).toContain('lead_converted');
   });
 
+  it('keeps a lead\'s requirement and remarks, and carries them over on convert', async () => {
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const lead = await http().post('/api/v1/leads').set(ravi.auth)
+      .send({ name: 'Anil Gupta', phone: '9876501234', company: 'Gupta Steels', requirement: '50 office chairs, budget 2 lakh', notes: 'Prefers WhatsApp' });
+    expect(lead.status).toBe(201);
+    expect(lead.body.requirement).toBe('50 office chairs, budget 2 lakh');
+    expect(lead.body.notes).toBe('Prefers WhatsApp');
+
+    // Remarks added later: listed newest first for this lead only, with the author, and on the timeline
+    expect((await http().post('/api/v1/notes').set(ravi.auth).send({ body: '   ', related: { leadId: lead.body.id } })).status).toBe(400);
+    await http().post('/api/v1/notes').set(ravi.auth).send({ body: 'Called, wants a demo', related: { leadId: lead.body.id } });
+    await http().post('/api/v1/notes').set(admin.auth).send({ body: '  Demo fixed for Monday ', related: { leadId: lead.body.id } });
+    const other = await http().post('/api/v1/leads').set(ravi.auth).send({ name: 'Other' });
+    await http().post('/api/v1/notes').set(ravi.auth).send({ body: 'Not this lead', related: { leadId: other.body.id } });
+    const remarks = await http().get('/api/v1/notes').query({ 'related.leadId': lead.body.id }).set(ravi.auth);
+    expect(remarks.body.items.map((n) => n.body)).toEqual(['Demo fixed for Monday', 'Called, wants a demo']);
+    expect(remarks.body.items[1].authorId).toBe(ravi.user.id);
+    const tl = await http().get(`/api/v1/timeline/lead/${lead.body.id}`).set(ravi.auth);
+    expect(tl.body.items.filter((i) => i.type === 'note').map((i) => i.title)).toContain('Called, wants a demo');
+
+    // Editing the requirement works for the owner
+    const edited = await http().patch(`/api/v1/leads/${lead.body.id}`).set(ravi.auth).send({ requirement: '60 office chairs' });
+    expect(edited.body.requirement).toBe('60 office chairs');
+
+    const conv = await http().post(`/api/v1/leads/${lead.body.id}/convert`).set(admin.auth).send({});
+    const dealNotes = await http().get('/api/v1/notes').query({ 'related.dealId': conv.body.deal.id }).set(admin.auth);
+    expect(dealNotes.body.items[0].body).toBe('Requirement: 60 office chairs\nRemarks: Prefers WhatsApp');
+  });
+
   it('logs deal stage changes', async () => {
     const admin = await registerOrg();
     const deal = await http().post('/api/v1/deals').set(admin.auth).send({ name: 'Big deal', value: 1000 });

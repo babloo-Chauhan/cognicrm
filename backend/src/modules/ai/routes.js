@@ -68,7 +68,7 @@ router.post('/ai/qualify/lead/:id', requirePermission('ai:use'), aiLimiter, asyn
   if (!lead) throw notFound('Lead');
   const history = await Activity.find({ organizationId: req.orgId, 'links.leadId': lead._id }).sort({ occurredAt: -1 }).limit(30).lean();
   res.json(await qualifyLead(req.orgId, {
-    lead: { name: lead.name, company: lead.company, source: lead.source, industry: lead.industry, companySize: lead.companySize, estimatedValue: lead.estimatedValue },
+    lead: { name: lead.name, company: lead.company, source: lead.source, industry: lead.industry, companySize: lead.companySize, estimatedValue: lead.estimatedValue, requirement: lead.requirement, remarks: lead.notes },
     history: history.map((h) => ({ type: h.type, title: h.title, at: h.occurredAt, data: h.data })),
   }));
 });

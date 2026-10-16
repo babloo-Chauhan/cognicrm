@@ -9,7 +9,7 @@ const phone = { key: 'phone', label: 'Phone', type: 'phone' };
 export const FIELD_RULES = {
   leads: [
     text('name', 'Name', { required: true, format: 'name' }), email, phone, text('company', 'Company'),
-    text('industry', 'Industry'), text('notes', 'Notes', { type: 'textarea' }),
+    text('industry', 'Industry'), text('requirement', 'Requirement', { type: 'textarea' }), text('notes', 'Remarks', { type: 'textarea' }),
     { key: 'estimatedValue', label: 'Estimated value', type: 'number', money: true },
   ],
   contacts: [

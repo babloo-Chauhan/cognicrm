@@ -68,16 +68,46 @@ function SalesDocs({ type, id }) {
 
 const DEAL_STEP = { won: 3, lost: 1 };
 
-function Notes({ type, id }) {
+/** Remarks on a record (Notes linked to it): newest first, with who wrote each one and when. */
+function Remarks({ type, id, onAdded }) {
+  const key = `related.${type}Id`;
+  const { data, error, reload } = useAsync(() => get('/notes', { [key]: id, limit: 50 }), [key, id]);
   const [body, setBody] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const add = async () => {
-    await post('/notes', { body, related: { [`${type}Id`]: id } });
-    setBody('');
+    if (!body.trim() || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await post('/notes', { body: body.trim(), related: { [`${type}Id`]: id } });
+      setBody('');
+      reload();
+      onAdded?.();
+    } catch (e) {
+      setSaveError(e);
+    } finally {
+      setSaving(false);
+    }
   };
   return (
-    <div className="row" style={{ flexWrap: 'nowrap' }}>
-      <input className="input" placeholder="Add a note…" value={body} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && body && add()} />
-      <button type="button" className="btn" disabled={!body} onClick={add}>Add</button>
+    <div className="card">
+      <div className="card-header"><h3>Remarks</h3>{data?.items?.length > 0 && <span className="badge">{data.items.length}</span>}</div>
+      <div className="card-body stack">
+        <ErrorAlert error={saveError || error} />
+        <textarea
+          className="input" rows={2} placeholder="Add a remark or requirement… (Ctrl+Enter to save)" value={body}
+          onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && add()}
+        />
+        <div><button type="button" className="btn btn-primary btn-sm" disabled={!body.trim() || saving} onClick={add}>{saving ? 'Saving…' : 'Add remark'}</button></div>
+        {data?.items?.map((n) => (
+          <div key={n.id} style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{n.body}</div>
+            <div className="small muted"><OwnerName id={n.authorId} /> · {dateTime(n.createdAt)}</div>
+          </div>
+        ))}
+        {data && !data.items?.length && <div className="small muted">No remarks yet.</div>}
+      </div>
     </div>
   );
 }
@@ -93,10 +123,13 @@ export function EntityDetail({ entity }) {
   const [showErrors, setShowErrors] = useState(false);
   const [aiResult, setAiResult] = useState(null);
   const [scheduling, setScheduling] = useState(false);
+  const [timelineKey, setTimelineKey] = useState(0);
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorAlert error={error} />;
   const related = { [`${cfg.type}Id`]: data.id };
+  // Requirement, remarks, descriptions: shown in full above the remarks, not squeezed into the details list
+  const longFields = cfg.fields.filter((f) => f.type === 'textarea' && data[f.key]);
 
   const save = async () => {
     setSaveError(null);
@@ -159,12 +192,19 @@ export function EntityDetail({ entity }) {
       )}
       <div className="grid grid-detail">
         <div className="stack" style={{ gap: 16 }}>
+          {longFields.length > 0 && (
+            <div className="card">
+              <div className="card-body stack">
+                {longFields.map((f) => <div key={f.key}><div className="small muted">{f.label}</div><div style={{ whiteSpace: 'pre-wrap' }}>{data[f.key]}</div></div>)}
+              </div>
+            </div>
+          )}
+          {['leads', 'contacts', 'deals', 'accounts', 'tickets'].includes(entity) && <Remarks type={cfg.type} id={data.id} onAdded={() => setTimelineKey((k) => k + 1)} />}
           {['deals', 'contacts', 'accounts'].includes(entity) && <SalesDocs type={cfg.type} id={data.id} />}
           <div className="card">
             <div className="card-header"><h3>Activity timeline</h3></div>
             <div className="card-body stack">
-              <Notes type={cfg.type} id={data.id} />
-              <Timeline entityType={cfg.type} entityId={data.id} />
+              <Timeline key={timelineKey} entityType={cfg.type} entityId={data.id} />
             </div>
           </div>
         </div>
@@ -173,7 +213,7 @@ export function EntityDetail({ entity }) {
             <div className="card-header"><h3>Details</h3></div>
             <div className="card-body">
               <dl className="stack small" style={{ margin: 0 }}>
-                {cfg.fields.filter((f) => f.type !== 'ref').map((f) => (
+                {cfg.fields.filter((f) => f.type !== 'ref' && f.type !== 'textarea').map((f) => (
                   <div key={f.key} className="row" style={{ justifyContent: 'space-between' }}>
                     <dt className="muted">{f.label}</dt>
                     <dd style={{ margin: 0, textAlign: 'right' }}>
