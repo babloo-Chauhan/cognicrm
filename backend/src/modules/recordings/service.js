@@ -113,6 +113,25 @@ export async function storeDeviceRecording(call, { data, contentType, duration }
   return { recording };
 }
 
+/**
+ * A recording's audio for playback with seeking: { size, type, open(start, end) → stream }, or null.
+ * Phone recordings are read from disk in parts; provider ones are fetched once and served from memory.
+ */
+export async function recordingAudio(recordingId) {
+  const rec = await CallRecording.findById(recordingId).select('+recordingUrl');
+  if (!rec || rec.deletedAt) return null;
+  if (rec.provider === DEVICE) {
+    const file = devicePath(rec);
+    const stat = await fs.promises.stat(file).catch(() => null);
+    if (!stat) return null;
+    return { size: stat.size, type: MIME_OF[path.extname(file).slice(1)] || 'audio/mpeg', open: (start, end) => fs.createReadStream(file, { start, end }) };
+  }
+  const media = await recordingMedia(rec);
+  if (!media || media.ok === false) return null;
+  const data = Buffer.from(await media.arrayBuffer());
+  return { size: data.length, type: media.headers.get('content-type') || 'audio/mpeg', open: (start, end) => Readable.from([data.subarray(start, end + 1)]) };
+}
+
 /** The audio of a recording as a fetch Response (body stream, content-type, arrayBuffer()), or null. */
 export async function recordingMedia(rec) {
   if (rec.provider === DEVICE) {
@@ -135,12 +154,6 @@ export function signedRecordingUrl(recordingId, ttlSeconds = 300) {
   return { url: url.toString(), expiresAt: new Date(expires * 1000) };
 }
 
-/** Streams recording audio through the server so provider credentials never reach the browser. */
-export async function streamRecording(recordingId) {
-  const rec = await CallRecording.findById(recordingId).select('+recordingUrl');
-  if (!rec || rec.deletedAt) return null;
-  return recordingMedia(rec);
-}
 
 /** Applies recording retention: deletes provider media and our reference after `deleteAt`. */
 export async function applyRecordingRetention(now = new Date()) {

@@ -234,6 +234,13 @@ describe('outbound calls', () => {
     expect(played.status).toBe(200);
     expect(played.headers['content-type']).toBe('audio/mp4');
     expect(played.body.equals(audio)).toBe(true);
+    expect(played.headers['accept-ranges']).toBe('bytes');
+    // Seeking: the player asks for a part of the file
+    const part = await http().get(`${url.pathname}${url.search}`).set('Range', 'bytes=5-8').buffer(true).parse((res, cb) => { const b = []; res.on('data', (c) => b.push(c)); res.on('end', () => cb(null, Buffer.concat(b))); });
+    expect(part.status).toBe(206);
+    expect(part.headers['content-range']).toBe(`bytes 5-8/${audio.length}`);
+    expect(part.body.toString()).toBe(audio.subarray(5, 9).toString());
+    expect((await http().get(`${url.pathname}${url.search}`).set('Range', 'bytes=999-')).status).toBe(416);
 
     // A connected call with nothing on the phone is marked, so the admin sees the recorder was off
     const second = (await http().post('/api/v1/calls').set(agent.auth).send({ to: '9876543210', mode: 'native', source: 'mobile' })).body.call;

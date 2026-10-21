@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { checkLimit } from '../saas/usage.js';
 import { z } from 'zod';
-import { Readable } from 'node:stream';
 import {
   Alert, AuditLog, Call, CallCampaign, CallCampaignContact, CallRecording, DncEntry, Integration, Organization, Voicemail,
 } from '../../models/index.js';
@@ -12,7 +11,7 @@ import { audit } from '../../lib/audit.js';
 import { decryptJson, encryptJson, verifyResourceSignature } from '../../lib/crypto.js';
 import { env } from '../../config/env.js';
 import { isValidE164, normalizePhone } from '../../lib/phone.js';
-import { signedRecordingUrl, streamRecording } from '../recordings/service.js';
+import { recordingAudio, signedRecordingUrl } from '../recordings/service.js';
 import { callAnalytics, contactCenterSnapshot } from '../analytics/service.js';
 import {
   campaignAnalytics, dialContact, importContacts, joinCampaign, previewNext, scheduleContactCallback, setCampaignStatus, skipContact,
@@ -27,11 +26,28 @@ export const publicRouter = Router();
 publicRouter.get('/recordings/:id/stream', async (req, res) => {
   const { expires, sig } = req.query;
   if (!verifyResourceSignature(`recording:${req.params.id}`, expires, sig)) throw forbidden('Link expired or invalid');
-  const media = await streamRecording(req.params.id);
-  if (!media) throw notFound('Recording');
-  res.setHeader('Content-Type', media.headers.get('content-type') || 'audio/mpeg');
+  const audio = await recordingAudio(req.params.id);
+  if (!audio) throw notFound('Recording');
+  res.setHeader('Content-Type', audio.type);
   res.setHeader('Cache-Control', 'private, no-store');
-  Readable.fromWeb(media.body).pipe(res);
+  // Byte ranges let the player jump anywhere in the recording (seek bar, ±10 s)
+  res.setHeader('Accept-Ranges', 'bytes');
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (range && audio.size) {
+    let start = range[1] === '' ? Math.max(0, audio.size - Number(range[2])) : Number(range[1]);
+    let end = range[1] !== '' && range[2] !== '' ? Number(range[2]) : audio.size - 1;
+    end = Math.min(end, audio.size - 1);
+    if (start > end || start >= audio.size) {
+      res.status(416).setHeader('Content-Range', `bytes */${audio.size}`);
+      return res.end();
+    }
+    start = Math.max(0, start);
+    res.status(206).setHeader('Content-Range', `bytes ${start}-${end}/${audio.size}`);
+    res.setHeader('Content-Length', String(end - start + 1));
+    return audio.open(start, end).pipe(res);
+  }
+  res.setHeader('Content-Length', String(audio.size));
+  audio.open(0, audio.size - 1).pipe(res);
 });
 
 const router = Router();
