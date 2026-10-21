@@ -89,6 +89,10 @@ const callSchema = new Schema({
   dispatchLockedAt: Date, // prevents two dispatchers ringing agents for the same call
   events: [{ _id: false, type: { type: String }, at: Date, data: Schema.Types.Mixed }],
   metadata: Schema.Types.Mixed,
+  // Phone-dialer calls: whether the phone's own call recorder had a recording for it ('uploaded' / 'not_found')
+  deviceRecording: { type: String, enum: ['uploaded', 'not_found'] },
+  // Talk time read from the phone's call log (exact), not typed in or estimated from time away
+  durationFromCallLog: Boolean,
 });
 callSchema.index({ organizationId: 1, startedAt: -1 });
 callSchema.index({ organizationId: 1, agentId: 1, startedAt: -1 });

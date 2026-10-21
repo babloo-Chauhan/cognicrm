@@ -617,9 +617,10 @@ export async function closeAbandonedNativeCalls(now = new Date()) {
  * Outcome of a call placed through the phone's dialer. `placed: false` means the phone's call log shows
  * no such call (the dialer was opened and closed): the call is canceled, not counted as unanswered.
  */
-export async function logNativeCallOutcome(call, { durationSeconds = 0, connected, placed }) {
+export async function logNativeCallOutcome(call, { durationSeconds = 0, connected, placed, fromCallLog }) {
   if (call.mode !== 'native') throw badRequest('Only native calls can be logged manually');
   if (isTerminal(call.status)) return call;
+  if (fromCallLog) call.durationFromCallLog = true;
   if (placed === false) return finalizeCall(call, { finalStatus: 'canceled' });
   if (connected || durationSeconds > 0) {
     call.answeredAt = new Date(Date.now() - durationSeconds * 1000);

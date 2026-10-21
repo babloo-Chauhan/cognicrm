@@ -1,7 +1,7 @@
 import { Call, CallRecording, CallTranscript, Organization, Task } from '../../models/index.js';
 import { emitEvent } from '../../lib/eventBus.js';
 import { CALL_EVENTS } from '../telephony/events.js';
-import { getTelephonyProvider } from '../telephony/registry.js';
+import { recordingMedia } from '../recordings/service.js';
 import { broadcastCall, syncCallActivity } from '../calls/service.js';
 import { logActivity } from '../timeline/service.js';
 import { getTranscriber } from './transcription.js';
@@ -31,8 +31,8 @@ export async function runCallIntelligence(orgId, callId, { force = false } = {})
 
   try {
     if (transcriptDoc.status === 'pending' || force) {
-      const provider = await getTelephonyProvider(orgId, recording.provider);
-      const media = await provider.fetchRecordingMedia(recording.provider === 'twilio' ? recording.recordingId : recording.recordingUrl);
+      const media = await recordingMedia(recording);
+      if (!media) throw new Error('Recording audio is not available');
       const audio = Buffer.from(await media.arrayBuffer());
       const result = await transcriber.transcribe({ audio, contentType: media.headers?.get?.('content-type') || 'audio/mpeg' });
       transcriptDoc.set({

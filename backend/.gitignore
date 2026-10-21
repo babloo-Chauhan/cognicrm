@@ -5,3 +5,6 @@ secrets/
 
 # local Redis snapshot
 dump.rdb
+
+# call recordings uploaded from phones
+storage/

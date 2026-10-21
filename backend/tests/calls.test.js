@@ -195,6 +195,50 @@ describe('outbound calls', () => {
     expect(canceled.body.answeredAt).toBeFalsy();
   });
 
+  it('stores the recording made by the phone call recorder; the admin can play it', async () => {
+    const fs = await import('node:fs');
+    const { applyRecordingRetention } = await import('../src/modules/recordings/service.js');
+    const { admin, agent } = await setup();
+    const other = await addUser(admin, { role: 'agent' });
+    const call = (await http().post('/api/v1/calls').set(agent.auth).send({ to: '9876543210', mode: 'native', source: 'mobile' })).body.call;
+    await http().post(`/api/v1/calls/${call.id}/log`).set(agent.auth).send({ durationSeconds: 42, connected: true });
+    const audio = Buffer.from('fake m4a audio bytes');
+    const upload = (who, body = audio, type = 'audio/mp4') => http().post(`/api/v1/calls/${call.id}/recording`).query({ duration: 41 }).set(who.auth).set('Content-Type', type).send(body);
+
+    expect((await upload(other)).status).toBe(403); // not their call
+    expect((await upload(agent, audio, 'text/plain')).status).toBe(400);
+    const first = await upload(agent);
+    expect(first.status).toBe(201);
+    expect((await upload(agent)).body).toMatchObject({ id: first.body.id, duplicate: true }); // retried upload: kept once
+    const saved = await Call.findById(call.id);
+    expect(saved).toMatchObject({ hasRecording: true, deviceRecording: 'uploaded' });
+    const rec = await CallRecording.findById(first.body.id).select('+recordingUrl');
+    expect(rec).toMatchObject({ provider: 'device', duration: 41, kind: 'call' });
+
+    // The admin plays it through a short-lived signed link
+    const signed = await http().get(`/api/v1/recordings/${rec.id}/url`).set(admin.auth);
+    const url = new URL(signed.body.url);
+    const played = await http().get(`${url.pathname}${url.search}`).buffer(true).parse((res, cb) => { const b = []; res.on('data', (c) => b.push(c)); res.on('end', () => cb(null, Buffer.concat(b))); });
+    expect(played.status).toBe(200);
+    expect(played.headers['content-type']).toBe('audio/mp4');
+    expect(played.body.equals(audio)).toBe(true);
+
+    // A connected call with nothing on the phone is marked, so the admin sees the recorder was off
+    const second = (await http().post('/api/v1/calls').set(agent.auth).send({ to: '9876543210', mode: 'native', source: 'mobile' })).body.call;
+    await http().post(`/api/v1/calls/${second.id}/log`).set(agent.auth).send({ durationSeconds: 30, connected: true });
+    expect((await http().post(`/api/v1/calls/${second.id}/recording/missing`).set(agent.auth)).body.deviceRecording).toBe('not_found');
+    expect((await http().post(`/api/v1/calls/${call.id}/recording/missing`).set(agent.auth)).body.deviceRecording).toBe('uploaded');
+
+    // Retention deletes the file from disk too
+    const { env } = await import('../src/config/env.js');
+    const file = `${env.recordingsDir}/${rec.recordingUrl.replace(/^file:/, '')}`;
+    expect(fs.existsSync(file)).toBe(true);
+    await CallRecording.updateOne({ _id: rec.id }, { deleteAt: new Date(Date.now() - 1000) });
+    await applyRecordingRetention();
+    expect(fs.existsSync(file)).toBe(false);
+    expect((await Call.findById(call.id)).hasRecording).toBe(false);
+  });
+
   it('a dialer call the phone never reported stops blocking new calls, then is closed', async () => {
     const { closeAbandonedNativeCalls } = await import('../src/modules/calls/service.js');
     const { admin } = await setup();

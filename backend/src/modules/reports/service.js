@@ -291,8 +291,9 @@ export async function leadExport(orgId, query) {
 
 /**
  * One employee's calls in the period: totals, talk time, when in the day they call, and how calls ended.
- * Calls from the mobile app go through the phone's own dialer, so their duration is the time the person
- * spent away from the app (confirmed by them) — `estimatedCalls` says how many those are.
+ * Calls from the mobile app go through the phone's own dialer: the app reads their talk time from the phone's
+ * call log; older app versions estimated it from the time away — `estimatedCalls` says how many those are.
+ * `recorderOff` counts connected dialer calls the phone's own call recorder did not record.
  */
 async function callSummary(orgId, userId, period) {
   const match = { organizationId: oid(orgId), agentId: oid(userId), startedAt: { $gte: period.start, $lt: period.end } };
@@ -309,7 +310,8 @@ async function callSummary(orgId, userId, period) {
           talkSeconds: { $sum: { $ifNull: ['$durationSeconds', 0] } },
           longestSeconds: { $max: { $ifNull: ['$durationSeconds', 0] } },
           recorded: { $sum: { $cond: ['$hasRecording', 1, 0] } },
-          estimated: { $sum: { $cond: [{ $eq: ['$mode', 'native'] }, 1, 0] } },
+          estimated: { $sum: { $cond: [{ $and: [{ $eq: ['$mode', 'native'] }, { $ne: ['$durationFromCallLog', true] }] }, 1, 0] } },
+          recorderOff: { $sum: { $cond: [{ $eq: ['$deviceRecording', 'not_found'] }, 1, 0] } },
           first: { $min: '$startedAt' },
           last: { $max: '$startedAt' },
         },
@@ -330,13 +332,13 @@ async function callSummary(orgId, userId, period) {
       { $sort: { count: -1 } },
     ]),
   ]);
-  const c = k || { total: 0, outbound: 0, inbound: 0, connected: 0, talkSeconds: 0, longestSeconds: 0, recorded: 0, estimated: 0, first: null, last: null };
+  const c = k || { total: 0, outbound: 0, inbound: 0, connected: 0, talkSeconds: 0, longestSeconds: 0, recorded: 0, recorderOff: 0, estimated: 0, first: null, last: null };
   const hours = new Map(byHour.map((h) => [h._id, h]));
   return {
     total: c.total, outbound: c.outbound, inbound: c.inbound, connected: c.connected, notConnected: c.total - c.connected,
     connectRate: rate(c.connected, c.total), talkSeconds: c.talkSeconds,
     averageSeconds: c.connected ? Math.round(c.talkSeconds / c.connected) : 0, longestSeconds: c.longestSeconds,
-    recorded: c.recorded, estimatedCalls: c.estimated, firstCallAt: c.first, lastCallAt: c.last,
+    recorded: c.recorded, recorderOff: c.recorderOff, estimatedCalls: c.estimated, firstCallAt: c.first, lastCallAt: c.last,
     byHour: Array.from({ length: 24 }, (_, h) => ({ hour: h, calls: hours.get(h)?.calls || 0, connected: hours.get(h)?.connected || 0 })),
     byOutcome: byOutcome.map((o) => ({ outcome: o._id, count: o.count })),
   };
@@ -361,7 +363,7 @@ export async function employeeCalls(orgId, userId, query) {
   const [total, calls] = await Promise.all([
     Call.countDocuments(filter),
     Call.find(filter).sort({ startedAt: -1 }).skip((page - 1) * limit).limit(limit)
-      .select('direction status mode customerPhone startedAt answeredAt durationSeconds disposition notes hasRecording hasTranscript related source').lean(),
+      .select('direction status mode customerPhone startedAt answeredAt durationSeconds disposition notes hasRecording deviceRecording durationFromCallLog hasTranscript related source').lean(),
   ]);
   const ids = (key) => [...new Set(calls.map((c) => c.related?.[key]).filter(Boolean).map(String))];
   const [leads, contacts] = await Promise.all([
@@ -378,10 +380,10 @@ export async function employeeCalls(orgId, userId, query) {
       const contactId = c.related?.contactId ? String(c.related.contactId) : null;
       return {
         id: String(c._id), direction: c.direction, status: c.status, startedAt: c.startedAt, connected: Boolean(c.answeredAt),
-        durationSeconds: c.durationSeconds || 0, durationEstimated: c.mode === 'native', phone: c.customerPhone || '',
+        durationSeconds: c.durationSeconds || 0, durationEstimated: c.mode === 'native' && !c.durationFromCallLog, phone: c.customerPhone || '',
         customer: (contactId && contactName.get(contactId)) || (leadId && leadName.get(leadId)) || '', leadId, contactId,
         outcome: c.disposition?.label || '', notes: c.disposition?.notes || c.notes || '',
-        hasRecording: Boolean(c.hasRecording), hasTranscript: Boolean(c.hasTranscript), source: c.source || '',
+        hasRecording: Boolean(c.hasRecording), deviceRecording: c.deviceRecording || null, hasTranscript: Boolean(c.hasTranscript), source: c.source || '',
       };
     }),
   };

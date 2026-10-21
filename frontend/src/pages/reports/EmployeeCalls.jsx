@@ -29,7 +29,7 @@ const EXPORT = [
   ['Date & time', (c) => new Date(c.startedAt).toLocaleString('en-IN')], ['Customer', (c) => c.customer], ['Phone', (c) => c.phone],
   ['Direction', (c) => (c.direction === 'inbound' ? 'Incoming' : 'Outgoing')], ['Connected', (c) => (c.connected ? 'Yes' : 'No')],
   ['Duration (seconds)', (c) => c.durationSeconds], ['Duration estimated (mobile dialer)', (c) => (c.durationEstimated ? 'Yes' : 'No')],
-  ['Outcome', (c) => c.outcome], ['Notes', (c) => c.notes], ['Recording', (c) => (c.hasRecording ? 'Yes' : 'No')],
+  ['Outcome', (c) => c.outcome], ['Notes', (c) => c.notes], ['Recording', (c) => (c.hasRecording ? 'Yes' : c.deviceRecording === 'not_found' ? 'Not found on phone' : 'No')],
 ].map(([label, value]) => ({ label, value }));
 
 /** Calls section of the employee report: how many, how long, when, how they ended, and every call with its recording. */
@@ -72,7 +72,8 @@ export function EmployeeCalls({ employee, summary, period }) {
       {s.total > 0 && (
         <p className="small muted" style={{ marginTop: -6 }}>
           First call {dateTime(s.firstCallAt)} · last call {dateTime(s.lastCallAt)}.
-          {s.estimatedCalls > 0 && <> {s.estimatedCalls} call{s.estimatedCalls > 1 ? 's were' : ' was'} made from the mobile app through the phone's own dialer — their duration (shown with ~) is the time away from the app, confirmed by the employee, and they are not recorded.</>}
+          {s.estimatedCalls > 0 && <> {s.estimatedCalls} call{s.estimatedCalls > 1 ? 's were' : ' was'} made from an older version of the mobile app — their duration (shown with ~) is the time away from the app, confirmed by the employee.</>}
+          {s.recorderOff > 0 && <span style={{ color: 'var(--warning)' }}> {s.recorderOff} connected call{s.recorderOff > 1 ? 's have' : ' has'} no recording: the phone&apos;s call recorder is off — ask the employee to turn on automatic call recording in the phone&apos;s dialer settings.</span>}
         </p>
       )}
 
@@ -131,7 +132,9 @@ export function EmployeeCalls({ employee, summary, period }) {
                 { key: 'status', label: 'Result', render: (c) => <StatusBadge status={c.connected ? 'completed' : c.status} /> },
                 { key: 'duration', label: 'Duration', render: (c) => <Duration c={c} /> },
                 { key: 'outcome', label: 'Outcome & notes', render: (c) => (c.outcome || c.notes ? <div><div>{c.outcome}</div>{c.notes && <div className="small muted" style={{ maxWidth: 260 }}>{c.notes}</div>}</div> : <span className="muted">—</span>) },
-                { key: 'rec', label: 'Recording', render: (c) => (c.hasRecording ? <RecordingPlayer callId={c.id} /> : <span className="muted">—</span>) },
+                { key: 'rec', label: 'Recording', render: (c) => (c.hasRecording ? <RecordingPlayer callId={c.id} />
+                  : c.deviceRecording === 'not_found' ? <span className="small" style={{ color: 'var(--warning)' }} title="The employee's phone had no recording of this call: its call recorder is off">Recorder off</span>
+                    : <span className="muted">—</span>) },
               ]}
             />
             <Pager page={pageNo} pageSize={PAGE} total={data.total} loading={loading} onPage={(n) => setPage({ n, key })} />

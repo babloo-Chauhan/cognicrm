@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
 import dns from 'node:dns';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Node's resolver on some Windows/ISP setups refuses SRV queries (querySrv ECONNREFUSED)
 // for mongodb+srv URIs. Use public DNS unless overridden via DNS_SERVERS (comma-separated, 'system' to skip).
@@ -40,6 +43,10 @@ export const env = {
   signingSecret: required('URL_SIGNING_SECRET', 'dev-only-url-signing-secret'),
   // Public base URL the telephony providers can reach for webhooks (e.g. https://crm.example.com)
   publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:5000',
+  // Call recordings uploaded from employees' phones (git-ignored, survives deploys); tests use a temp dir
+  recordingsDir: process.env.RECORDINGS_DIR || (isTest
+    ? path.join(os.tmpdir(), `crm-recordings-${process.pid}`)
+    : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../storage/recordings')),
   corsOrigin: process.env.CORS_ORIGIN || process.env.FRONTEND_URL || 'http://localhost:5173',
   // Web app URL (payment redirects, links in emails)
   frontendUrl: (process.env.FRONTEND_URL || (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',')[0]).replace(/\/$/, ''),

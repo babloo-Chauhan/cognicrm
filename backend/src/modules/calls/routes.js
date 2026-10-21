@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { z } from 'zod';
 import { sendTable } from '../../lib/spreadsheet.js';
 import {
@@ -6,10 +6,11 @@ import {
 } from '../../models/index.js';
 import { hasPermission, requirePermission } from '../../middleware/auth.js';
 import { validate } from '../../middleware/common.js';
-import { forbidden, notFound } from '../../lib/errors.js';
+import { badRequest, forbidden, notFound } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
 import { phoneVariants } from '../../lib/phone.js';
 import { serializeCallForUser } from '../compliance/service.js';
+import { storeDeviceRecording } from '../recordings/service.js';
 import { getTelephonyProvider, requireTelephonyProvider } from '../telephony/registry.js';
 import { CAPABILITIES } from '../telephony/TelephonyProvider.js';
 import { getCustomerContext } from '../crm/lookup.js';
@@ -227,9 +228,34 @@ router.post('/calls/:id/disposition', validate(dispositionSchema), async (req, r
   res.json(await applyDisposition(req.orgId, req.user, req.params.id, req.body));
 });
 
-router.post('/calls/:id/log', validate(z.object({ durationSeconds: z.number().min(0).max(86400), connected: z.boolean().optional(), placed: z.boolean().optional() })), async (req, res) => {
+router.post('/calls/:id/log', validate(z.object({ durationSeconds: z.number().min(0).max(86400), connected: z.boolean().optional(), placed: z.boolean().optional(), fromCallLog: z.boolean().optional() })), async (req, res) => {
   const call = await ownCallOr(req, 'calls:control_all');
   res.json(await logNativeCallOutcome(call, req.body));
+});
+
+/**
+ * The phone's own call recorder made a recording of this dialer call: the app uploads the audio file as the
+ * body (Content-Type audio/*; ?duration= seconds). One per call; the admin plays it from the call history.
+ */
+router.post('/calls/:id/recording', express.raw({ type: () => true, limit: '60mb' }), async (req, res) => {
+  const call = await ownCallOr(req, 'calls:control_all');
+  if (call.mode !== 'native') throw badRequest('Only calls made from the phone can upload a recording');
+  const result = await storeDeviceRecording(call, { data: req.body, contentType: req.headers['content-type'], duration: Number(req.query.duration) });
+  if (result.error) throw badRequest(result.error);
+  call.deviceRecording = 'uploaded';
+  await call.save();
+  res.status(result.duplicate ? 200 : 201).json({ id: String(result.recording._id), duplicate: Boolean(result.duplicate) });
+});
+
+/** No recording was found on the phone for this connected call (recorder off, or the phone has none). */
+router.post('/calls/:id/recording/missing', async (req, res) => {
+  const call = await ownCallOr(req, 'calls:control_all');
+  if (call.mode !== 'native') throw badRequest('Only calls made from the phone');
+  if (!call.hasRecording) {
+    call.deviceRecording = 'not_found';
+    await call.save();
+  }
+  res.json({ deviceRecording: call.deviceRecording || 'uploaded' });
 });
 
 router.post('/calls/:id/monitor', requirePermission('supervisor:monitor'), validate(z.object({ mode: z.enum(['listen', 'whisper', 'barge']) })), async (req, res) => {
