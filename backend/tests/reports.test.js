@@ -14,6 +14,7 @@ describe('employee reports', () => {
       const u = await addUser(admin, { role });
       expect((await http().get('/api/v1/reports/team').set(u.auth)).status).toBe(403);
       expect((await http().get('/api/v1/reports/leads').set(u.auth)).status).toBe(403);
+      expect((await http().get('/api/v1/reports/leads/export').set(u.auth)).status).toBe(403);
       expect((await http().get(`/api/v1/reports/employees/${admin.user.id}`).set(u.auth)).status).toBe(403);
     }
     expect((await http().get('/api/v1/reports/team').set(admin.auth)).status).toBe(200);
@@ -78,6 +79,34 @@ describe('employee reports', () => {
     expect(one.body.recentActivity.length).toBeGreaterThan(0);
     // Someone from another company is not found
     expect((await http().get(`/api/v1/reports/employees/${other.user.id}`).set(admin.auth)).status).toBe(404);
+  });
+
+  it('exports every lead of the period with owner, sharing, calls and the latest remark', async () => {
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const mohan = await addUser(admin, { role: 'sales_manager', name: 'Mohan' });
+    const lead = (await http().post('/api/v1/leads').set(admin.auth).send({ name: 'Export Lead', phone: '9876500011', source: 'website', ownerId: ravi.user.id, estimatedValue: 5000, requirement: '10 chairs' })).body;
+    await http().post('/api/v1/leads').set(admin.auth).send({ name: 'Admin Lead' });
+    await http().post(`/api/v1/leads/${lead.id}/team`).set(ravi.auth).send({ userId: mohan.user.id });
+    await http().post('/api/v1/notes').set(ravi.auth).send({ body: 'First call', related: { leadId: lead.id } });
+    await http().post('/api/v1/notes').set(ravi.auth).send({ body: 'Wants a quote', related: { leadId: lead.id } });
+    const call = (await http().post('/api/v1/calls').set(ravi.auth).send({ to: '9876500011', mode: 'native', source: 'mobile', related: { leadId: lead.id } })).body.call;
+    await http().post(`/api/v1/calls/${call.id}/log`).set(ravi.auth).send({ durationSeconds: 95, connected: true });
+
+    const all = await http().get('/api/v1/reports/leads/export').query({ from: '2020-01-01', to: today() }).set(admin.auth);
+    expect(all.status).toBe(200);
+    expect(all.body.leads.map((l) => l.name).sort()).toEqual(['Admin Lead', 'Export Lead']);
+    // Shared with Mohan; the admin who created it stays on it too
+    expect(all.body.leads.find((l) => l.name === 'Export Lead')).toMatchObject({
+      phone: '+919876500011', source: 'website', owner: 'Ravi', sharedWith: ['Admin User', 'Mohan'], estimatedValue: 5000, requirement: '10 chairs',
+      calls: 1, connectedCalls: 1, talkSeconds: 95, remarks: 2, latestRemark: 'Wants a quote',
+    });
+    // One employee's leads only
+    const ravis = await http().get('/api/v1/reports/leads/export').query({ from: '2020-01-01', to: today(), ownerId: ravi.user.id }).set(admin.auth);
+    expect(ravis.body.leads.map((l) => l.name)).toEqual(['Export Lead']);
+    // Another company sees nothing of it
+    const other = await registerOrg();
+    expect((await http().get('/api/v1/reports/leads/export').query({ from: '2020-01-01', to: today() }).set(other.auth)).body.leads).toEqual([]);
   });
 
   it('shows how many calls an employee made, for how long, and which have recordings', async () => {

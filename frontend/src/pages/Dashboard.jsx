@@ -42,7 +42,7 @@ function heat(score) {
 }
 
 /** Company KPIs from /dashboard (tenant-scoped on the server; sections outside the plan come back null). */
-function CompanyKpis({ data }) {
+function CompanyKpis({ data, activitiesTo }) {
   if (!data) {
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -52,14 +52,14 @@ function CompanyKpis({ data }) {
   }
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {data.leads && <Stat icon={Target} tone="primary" label="Total leads" value={data.leads.total.toLocaleString()} hint={`+${data.leads.newThisMonth} new this month`} />}
-      {data.customers && <Stat icon={Contact} tone="teal" label="Customers" value={data.customers.total.toLocaleString()} hint={`${data.customers.contacts} contacts · ${data.customers.accounts} accounts`} />}
-      {data.deals && <Stat icon={Handshake} tone="sky" label="Open deals" value={data.deals.open.toLocaleString()} hint={`${money(data.deals.openValue)} in pipeline`} />}
-      <Stat icon={IndianRupee} tone="amber" label="Revenue won" value={money(data.revenue.wonDeals)} hint={data.revenue.invoicesPaid ? `${money(data.revenue.invoicesPaid)} invoices paid` : 'From won deals'} />
-      {data.deals && <Stat icon={Trophy} tone="teal" label="Won / lost" value={`${data.deals.won} / ${data.deals.lost}`} hint={`Win rate ${data.conversionRate.deals}%`} />}
-      {data.leads && <Stat icon={Percent} tone="primary" label="Lead conversion" value={`${data.conversionRate.leads}%`} hint={`${data.leads.converted} converted`} />}
-      {data.pendingTasks !== null && <Stat icon={ListChecks} tone="rose" label="Pending tasks" value={data.pendingTasks} />}
-      <Stat icon={Activity} tone="sky" label="Today's activities" value={data.todaysActivities} />
+      {data.leads && <Stat icon={Target} tone="primary" label="Total leads" to="/leads" value={data.leads.total.toLocaleString()} hint={`+${data.leads.newThisMonth} new this month`} />}
+      {data.customers && <Stat icon={Contact} tone="teal" label="Customers" to="/contacts" value={data.customers.total.toLocaleString()} hint={`${data.customers.contacts} contacts · ${data.customers.accounts} accounts`} />}
+      {data.deals && <Stat icon={Handshake} tone="sky" label="Open deals" to="/pipelines" value={data.deals.open.toLocaleString()} hint={`${money(data.deals.openValue)} in pipeline`} />}
+      <Stat icon={IndianRupee} tone="amber" label="Revenue won" to="/deals?stage=won" value={money(data.revenue.wonDeals)} hint={data.revenue.invoicesPaid ? `${money(data.revenue.invoicesPaid)} invoices paid` : 'From won deals'} />
+      {data.deals && <Stat icon={Trophy} tone="teal" label="Won / lost" to="/deals?stage=won" value={`${data.deals.won} / ${data.deals.lost}`} hint={`Win rate ${data.conversionRate.deals}%`} />}
+      {data.leads && <Stat icon={Percent} tone="primary" label="Lead conversion" to="/leads?status=converted" value={`${data.conversionRate.leads}%`} hint={`${data.leads.converted} converted`} />}
+      {data.pendingTasks !== null && <Stat icon={ListChecks} tone="rose" label="Pending tasks" to="/tasks?status=open" value={data.pendingTasks} />}
+      <Stat icon={Activity} tone="sky" label="Today's activities" to={activitiesTo} value={data.todaysActivities} />
     </div>
   );
 }
@@ -151,14 +151,15 @@ export function Dashboard() {
         </div>
       </section>
 
-      <CompanyKpis data={d} />
+      {/* Today's work by employee for the admin; otherwise the call history */}
+      <CompanyKpis data={d} activitiesTo={can('reports:team') ? '/reports?period=today' : (calling ? '/calling?tab=history' : undefined)} />
 
       {calling && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat icon={PhoneCall} tone="primary" label="My calls today" value={k.totalCalls ?? '—'} />
-          <Stat icon={CheckCircle2} tone="teal" label="Connected" value={k.connectedCalls ?? '—'} hint={`Answer rate ${percent(k.answerRate)}`} />
-          <Stat icon={Timer} tone="sky" label="Avg duration" value={duration(k.averageDuration)} />
-          <Stat icon={Trophy} tone="amber" label="Conversions" value={k.conversions ?? '—'} hint={`Conversion rate ${percent(k.conversionRate)}`} />
+          <Stat icon={PhoneCall} tone="primary" label="My calls today" to="/calling?tab=history" value={k.totalCalls ?? '—'} />
+          <Stat icon={CheckCircle2} tone="teal" label="Connected" to="/calling?tab=history" value={k.connectedCalls ?? '—'} hint={`Answer rate ${percent(k.answerRate)}`} />
+          <Stat icon={Timer} tone="sky" label="Avg duration" to="/calling?tab=history" value={duration(k.averageDuration)} />
+          <Stat icon={Trophy} tone="amber" label="Conversions" to="/leads?status=converted" value={k.conversions ?? '—'} hint={`Conversion rate ${percent(k.conversionRate)}`} />
         </div>
       )}
 

@@ -15,7 +15,7 @@ import { CAPABILITIES } from '../telephony/TelephonyProvider.js';
 import { getCustomerContext } from '../crm/lookup.js';
 import { runCallIntelligence } from '../ai/pipeline.js';
 import {
-  addParticipant, getCallForControl, hangupCall, holdCall, initiateOutboundCall, logNativeCallOutcome, monitorCall, muteCall,
+  addParticipant, getCallForControl, hangupCall, holdCall, initiateOutboundCall, logNativeCallOutcome, monitorCall, muteCall, NATIVE_ACTIVE_MINUTES,
   sendDtmf, transferCall,
 } from './service.js';
 import { applyDisposition, dispositionSchema } from './wrapup.js';
@@ -112,7 +112,12 @@ router.get('/calls', async (req, res) => {
 });
 
 router.get('/calls/active', async (req, res) => {
-  const filter = { ...callFilter({ ...req, query: {} }), status: { $in: ['initiated', 'ringing', 'queued', 'in_progress', 'on_hold', 'transferring'] } };
+  const filter = {
+    ...callFilter({ ...req, query: {} }),
+    status: { $in: ['initiated', 'ringing', 'queued', 'in_progress', 'on_hold', 'transferring'] },
+    // A phone-dialer call that was never reported back is not the person's current call
+    $nor: [{ mode: 'native', status: 'initiated', startedAt: { $lt: new Date(Date.now() - NATIVE_ACTIVE_MINUTES * 60000) } }],
+  };
   const org = await loadOrg(req);
   const items = await Call.find(filter).sort({ startedAt: -1 }).populate('agentId', 'name');
   res.json({ items: items.map((c) => serializeCallForUser(c, req.user, org, hasPermission(req.user, 'numbers:view_full'))) });

@@ -44,8 +44,10 @@ export function EntityList({ entity }) {
   const [params, setParams] = useSearchParams();
   // ?q= comes from the global search / command palette
   const [q, setQ] = useState(() => params.get('q') || '');
-  // ?ownerId= comes from the employee report ("Open their leads")
-  const [filter, setFilter] = useState(() => (params.get('ownerId') ? { ownerId: params.get('ownerId') } : {}));
+  // ?ownerId= comes from the employee report ("Open their leads"), ?status= / ?stage= from the dashboard cards
+  const [filter, setFilter] = useState(() => Object.fromEntries(
+    ['ownerId', ...(cfg.filters || []).map((f) => f.key)].filter((k) => params.get(k)).map((k) => [k, params.get(k)]),
+  ));
   const team = useTeam();
   const { user } = useAuth();
   const [creating, setCreating] = useState(null);

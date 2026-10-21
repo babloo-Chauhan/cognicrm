@@ -121,23 +121,52 @@ function TeamTab({ period }) {
   );
 }
 
+const dateCell = (d) => (d ? new Date(d).toLocaleString('en-IN') : '');
+const LEAD_EXPORT_COLUMNS = [
+  ['Lead', (l) => l.name], ['Phone', (l) => l.phone], ['Email', (l) => l.email], ['Company', (l) => l.company],
+  ['Source', (l) => label(l.source)], ['Status', (l) => label(l.status)], ['Assigned to', (l) => l.owner],
+  ['Shared with', (l) => l.sharedWith.join(', ')], ['Estimated value (₹)', (l) => l.estimatedValue], ['Requirement', (l) => l.requirement],
+  ['Calls', (l) => l.calls], ['Connected calls', (l) => l.connectedCalls], ['Talk time (min)', (l) => Math.round(l.talkSeconds / 6) / 10],
+  ['Last call', (l) => dateCell(l.lastCallAt)], ['Remarks', (l) => l.remarks], ['Latest remark', (l) => l.latestRemark],
+  ['Last contacted', (l) => dateCell(l.lastContactedAt)], ['Next follow-up', (l) => dateCell(l.nextFollowUpAt)], ['Created', (l) => dateCell(l.createdAt)],
+].map(([l, value]) => ({ label: l, value }));
+
 function LeadsTab({ period }) {
   const navigate = useNavigate();
   const team = useTeam();
   const ownerId = period.params.get('owner') || '';
   const { data, error, loading } = useAsync(() => get('/reports/leads', { from: period.from, to: period.to, ownerId: ownerId || undefined }), [period.from, period.to, ownerId]);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState(null);
   if (error) return <ErrorAlert error={error} />;
   if (!data) return <Loading />;
   const t = data.totals;
+  const exportLeads = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const r = await get('/reports/leads/export', { from: period.from, to: period.to, ownerId: ownerId || undefined });
+      const who = ownerId ? (team.find((u) => u.id === ownerId)?.name || 'employee').replace(/\s+/g, '-') : 'all';
+      downloadCsv(`leads-${who}-${r.period.from}-to-${r.period.to}.csv`, LEAD_EXPORT_COLUMNS, r.leads);
+    } catch (e) {
+      setExportError(e);
+    } finally {
+      setExporting(false);
+    }
+  };
   return (
     <div style={{ opacity: loading ? 0.6 : 1 }}>
-      <div className="row" style={{ marginBottom: 12 }}>
+      <ErrorAlert error={exportError} />
+      <div className="row" style={{ marginBottom: 12, justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <Field label="Employee">
           <select className="input" value={ownerId} onChange={(e) => period.set({ owner: e.target.value || null })}>
             <option value="">Whole company</option>
             {team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </Field>
+        <button type="button" className="btn" disabled={exporting || !t.leads} onClick={exportLeads} title="Every lead of this period, one row each">
+          <Download size={15} /> {exporting ? 'Preparing…' : 'Export leads (Excel CSV)'}
+        </button>
       </div>
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <Stat icon={Target} label="New leads" value={t.leads} hint={`Worth ${money(t.value)}`} />

@@ -195,6 +195,23 @@ describe('outbound calls', () => {
     expect(canceled.body.answeredAt).toBeFalsy();
   });
 
+  it('a dialer call the phone never reported stops blocking new calls, then is closed', async () => {
+    const { closeAbandonedNativeCalls } = await import('../src/modules/calls/service.js');
+    const { admin } = await setup();
+    const active = async () => (await http().get('/api/v1/calls/active').set(admin.auth)).body.items.map((c) => c.id);
+    const fresh = (await http().post('/api/v1/calls').set(admin.auth).send({ to: '9876543210', mode: 'native', source: 'mobile' })).body.call;
+    const old = (await http().post('/api/v1/calls').set(admin.auth).send({ to: '9876543211', mode: 'native', source: 'mobile' })).body.call;
+    await Call.updateOne({ _id: old.id }, { startedAt: new Date(Date.now() - 20 * 60000) });
+    // The fresh one is still the person's call; the 20-minute-old one no longer blocks the web dialer
+    expect(await active()).toEqual([fresh.id]);
+    expect(await closeAbandonedNativeCalls()).toBe(0);
+    // Hours later it is closed as canceled
+    await Call.updateOne({ _id: old.id }, { startedAt: new Date(Date.now() - 4 * 3600000) });
+    expect(await closeAbandonedNativeCalls()).toBe(1);
+    expect((await Call.findById(old.id)).status).toBe('canceled');
+    expect((await Call.findById(fresh.id)).status).toBe('initiated');
+  });
+
   it('restricts call history to own calls for agents and exports CSV safely', async () => {
     const { admin, agent } = await setup();
     const other = await addUser(admin, { role: 'agent' });

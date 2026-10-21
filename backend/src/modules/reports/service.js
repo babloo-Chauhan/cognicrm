@@ -239,6 +239,56 @@ export async function leadReport(orgId, query) {
 
 const answered = { $cond: [{ $ifNull: ['$answeredAt', false] }, 1, 0] };
 
+const EXPORT_LIMIT = 10000;
+
+/**
+ * Every lead created in the period (optionally one employee's), one row each, for the admin's Excel export:
+ * who has it and who it is shared with, where it stands, its calls with talk time and its latest remark.
+ */
+export async function leadExport(orgId, query) {
+  const period = await reportPeriod(orgId, query);
+  const match = { organizationId: oid(orgId), createdAt: { $gte: period.start, $lt: period.end } };
+  if (query.ownerId && /^[a-f0-9]{24}$/i.test(query.ownerId)) match.ownerId = oid(query.ownerId);
+  const leads = await Lead.find(match).sort({ createdAt: -1 }).limit(EXPORT_LIMIT)
+    .select('name phone email company source status ownerId assignees estimatedValue requirement notes nextFollowUpAt lastContactedAt createdAt').lean();
+  const ids = leads.map((l) => l._id);
+  const [users, calls, notes] = await Promise.all([
+    User.find({ organizationId: orgId }).select('name').lean(),
+    Call.aggregate([
+      { $match: { organizationId: oid(orgId), 'related.leadId': { $in: ids } } },
+      { $group: { _id: '$related.leadId', calls: { $sum: 1 }, connected: { $sum: answered }, talk: { $sum: { $ifNull: ['$durationSeconds', 0] } }, last: { $max: '$startedAt' } } },
+    ]),
+    Note.aggregate([
+      { $match: { organizationId: oid(orgId), 'related.leadId': { $in: ids } } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: '$related.leadId', count: { $sum: 1 }, latest: { $first: '$body' } } },
+    ]),
+  ]);
+  const name = new Map(users.map((u) => [String(u._id), u.name]));
+  const callsOf = byId(calls);
+  const notesOf = byId(notes);
+  return {
+    period: { from: period.from, to: period.to, timeZone: period.timeZone },
+    truncated: leads.length === EXPORT_LIMIT,
+    leads: leads.map((l) => {
+      const c = callsOf.get(String(l._id));
+      const n = notesOf.get(String(l._id));
+      const owner = l.ownerId ? String(l.ownerId) : '';
+      return {
+        id: String(l._id), name: l.name, phone: l.phone || '', email: l.email || '', company: l.company || '',
+        source: l.source || 'other', status: l.status,
+        owner: name.get(owner) || '',
+        sharedWith: (l.assignees || []).map(String).filter((a) => a !== owner).map((a) => name.get(a)).filter(Boolean),
+        estimatedValue: l.estimatedValue || 0, requirement: l.requirement || '',
+        calls: c?.calls || 0, connectedCalls: c?.connected || 0, talkSeconds: c?.talk || 0, lastCallAt: c?.last || null,
+        remarks: n?.count || 0, latestRemark: n?.latest || l.notes || '',
+        nextFollowUpAt: l.nextFollowUpAt || null, lastContactedAt: l.lastContactedAt || null, createdAt: l.createdAt,
+      };
+    }),
+  };
+}
+
+
 /**
  * One employee's calls in the period: totals, talk time, when in the day they call, and how calls ended.
  * Calls from the mobile app go through the phone's own dialer, so their duration is the time the person

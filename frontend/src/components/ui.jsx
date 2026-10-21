@@ -95,9 +95,14 @@ const STAT_TONES = {
 };
 
 /** KPI card. `icon` is a lucide component; `tone` picks one of the chart colors. */
-export function Stat({ label: text, value, hint, icon: Icon, tone = 'primary' }) {
+/** A KPI card; with `to` the whole card opens that page (e.g. the list behind the number). */
+export function Stat({ label: text, value, hint, icon: Icon, tone = 'primary', to }) {
+  const Box = to ? Link : 'div';
   return (
-    <div className="card group relative overflow-hidden p-4 transition-shadow hover:shadow-pop">
+    <Box
+      {...(to ? { to, title: `Open ${text.toLowerCase()}` } : {})}
+      className={cn('card group relative block overflow-hidden p-4 text-inherit no-underline transition-shadow hover:shadow-pop', to && 'cursor-pointer hover:ring-1 hover:ring-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}
+    >
       <div className={cn('pointer-events-none absolute -right-8 -top-8 size-28 rounded-full bg-gradient-to-br to-transparent opacity-70 blur-xl', STAT_TONES[tone])} />
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -111,7 +116,7 @@ export function Stat({ label: text, value, hint, icon: Icon, tone = 'primary' })
           </div>
         )}
       </div>
-    </div>
+    </Box>
   );
 }
 

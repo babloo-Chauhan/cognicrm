@@ -601,6 +601,18 @@ export async function monitorCall(call, supervisor, mode) {
 }
 
 /** Mobile/native calls: the app reports what happened on the phone's own dialer. */
+// A dialer call is only known to have ended when the phone reports it. One still "initiated" after this
+// long no longer counts as the person's current call, and after NATIVE_ABANDON_HOURS it is closed for good.
+export const NATIVE_ACTIVE_MINUTES = 15;
+const NATIVE_ABANDON_HOURS = 3;
+
+/** Closes dialer calls the phone never reported (app closed, sheet skipped on an old app): canceled, no talk time. */
+export async function closeAbandonedNativeCalls(now = new Date()) {
+  const stale = await Call.find({ mode: 'native', status: 'initiated', startedAt: { $lt: new Date(now - NATIVE_ABANDON_HOURS * 3600000) } }).limit(500);
+  for (const call of stale) await finalizeCall(call, { finalStatus: 'canceled' });
+  return stale.length;
+}
+
 /**
  * Outcome of a call placed through the phone's dialer. `placed: false` means the phone's call log shows
  * no such call (the dialer was opened and closed): the call is canceled, not counted as unanswered.
