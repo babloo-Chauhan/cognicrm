@@ -89,7 +89,9 @@ router.post('/leads/:id/convert', requirePermission('leads:update'), requirePerm
   if (lead.status === 'converted') throw badRequest('Lead is already converted');
   const [firstName, ...rest] = lead.name.split(' ');
   let account = null;
-  if (lead.company) {
+  // Accounts only for companies that use them (Settings → Features); otherwise the company stays a text field
+  const org = await Organization.findById(req.orgId).select('settings.features').lean();
+  if (lead.company && org?.settings?.features?.accounts === true) {
     account = await Account.findOne({ organizationId: req.orgId, name: lead.company })
       || await Account.create({ organizationId: req.orgId, name: lead.company, industry: lead.industry, ownerId: lead.ownerId });
   }

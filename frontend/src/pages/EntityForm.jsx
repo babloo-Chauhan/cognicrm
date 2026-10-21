@@ -120,7 +120,7 @@ export function EntityForm({ entity, value, onChange, showErrors = false }) {
   const auth = useAuth();
   return (
     <div className="form-grid">
-      {cfg.fields.map((f) => {
+      {cfg.fields.filter((f) => auth.hasModule(f.module)).map((f) => {
         const v = value[f.key];
         const error = (showErrors || touched[f.key]) ? errors[f.key] : null;
         const common = {

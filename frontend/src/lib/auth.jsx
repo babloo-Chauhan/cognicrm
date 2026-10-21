@@ -72,8 +72,12 @@ export function AuthProvider({ children }) {
     startSession: applySession,
     refresh: loadSession,
     can: (permission) => hasPermission(state.user, permission),
-    // Modules the company's current plan includes (core pages are always on)
-    hasModule: (module) => !module || Boolean(state.company?.modules?.includes(module)),
+    // Modules the company's current plan includes (core pages are always on). "accounts" is part of
+    // customers, but only shows when the company switched Accounts on (Settings → Features)
+    hasModule: (module) => {
+      if (module === 'accounts') return Boolean(state.company?.modules?.includes('customers')) && state.organization?.settings?.features?.accounts === true;
+      return !module || Boolean(state.company?.modules?.includes(module));
+    },
   }), [state, companies, login, register, logout, switchCompany, applySession, loadSession]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

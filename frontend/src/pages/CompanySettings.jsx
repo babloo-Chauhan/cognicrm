@@ -76,6 +76,8 @@ export function CompanySettings() {
     notificationSettings: { email: true, push: true, inApp: true, ...(s.notificationSettings || {}) },
     taxSettings: { taxName: 'GST', defaultRate: 18, pricesIncludeTax: false, ...(s.taxSettings || {}) },
     emailSettings: { fromName: '', replyTo: '', ...(s.emailSettings || {}) },
+    // Optional parts of the CRM a company can leave out so its team only sees what it uses
+    features: { accounts: false, ...(s.features || {}) },
   };
   const setP = (k, v) => setProfile({ ...p, [k]: v });
   const setAddr = (k, v) => setProfile({ ...p, address: { ...p.address, [k]: v } });
@@ -184,6 +186,13 @@ export function CompanySettings() {
         {['email', 'push', 'inApp'].map((k) => (
           <label key={k} className="checkbox"><input type="checkbox" disabled={!editable} checked={Boolean(pr.notificationSettings[k])} onChange={(e) => setNested('notificationSettings', k, e.target.checked)} /> {k === 'inApp' ? 'In-app' : k[0].toUpperCase() + k.slice(1)} notifications</label>
         ))}
+      </div></div>
+      <div className="card"><div className="card-header"><h3>Features your team uses</h3></div><div className="card-body stack">
+        <p className="small muted" style={{ margin: 0 }}>Switch off what your team does not use: it disappears from the web and the mobile app. Nothing is deleted — switch it back on any time.</p>
+        <label className="checkbox">
+          <input type="checkbox" disabled={!editable} checked={Boolean(pr.features.accounts)} onChange={(e) => setNested('features', 'accounts', e.target.checked)} />
+          <span><strong>Accounts</strong> <span className="muted">— customer companies with several contacts and deals (B2B). Off: a contact&apos;s company is just a text field.</span></span>
+        </label>
       </div></div>
       {editable && <div className="row"><button type="button" className="btn btn-primary right" onClick={save}>Save changes</button></div>}
     </div>

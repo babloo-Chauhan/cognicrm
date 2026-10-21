@@ -200,7 +200,7 @@ router.get('/organization', async (req, res) => {
 const SETTINGS_KEYS = [
   'defaultCountryCode', 'timezone', 'defaultLanguage', 'languages', 'telephonyProvider', 'smsProvider',
   'whatsappProvider', 'wrapUpSeconds', 'recording', 'transcription', 'compliance', 'fraud', 'customAgentStatuses', 'leadScoring', 'billing',
-  'branding', 'currency', 'dateFormat', 'emailSettings', 'notificationSettings', 'invoiceSettings', 'taxSettings',
+  'branding', 'currency', 'dateFormat', 'emailSettings', 'notificationSettings', 'invoiceSettings', 'taxSettings', 'features',
 ];
 
 router.patch('/organization/settings', requirePermission('settings:manage'), async (req, res) => {

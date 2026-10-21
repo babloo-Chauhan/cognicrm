@@ -47,7 +47,7 @@ const NAV = [
     items: [
       { to: '/leads', label: 'Leads', icon: Target, module: 'leads', permission: 'leads:read' },
       { to: '/contacts', label: 'Contacts', icon: Contact, module: 'customers', permission: 'contacts:read' },
-      { to: '/accounts', label: 'Accounts', icon: Building2, module: 'customers', permission: 'accounts:read' },
+      { to: '/accounts', label: 'Accounts', icon: Building2, module: 'accounts', permission: 'accounts:read' },
       { to: '/deals', label: 'Deals', icon: Handshake, module: 'deals', permission: 'deals:read' },
       { to: '/pipelines', label: 'Pipelines', icon: Route, module: 'deals', permission: 'deals:read' },
       { to: '/tasks', label: 'Tasks', icon: ListChecks, module: 'tasks' },

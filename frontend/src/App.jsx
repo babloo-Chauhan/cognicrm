@@ -34,7 +34,7 @@ const SuperAdminApp = lazy(() => import('./pages/superadmin/SuperAdminApp.jsx').
 const ENTITIES = ['leads', 'contacts', 'accounts', 'deals', 'tickets', 'tasks', 'products'];
 const NO_DETAIL = ['tasks', 'products'];
 // Plan module behind each page (see backend src/lib/modules.js)
-const MODULE_OF = { leads: 'leads', contacts: 'customers', accounts: 'customers', deals: 'deals', tickets: 'support', tasks: 'tasks', products: 'invoices' };
+const MODULE_OF = { leads: 'leads', contacts: 'customers', accounts: 'accounts', deals: 'deals', tickets: 'support', tasks: 'tasks', products: 'invoices' };
 const gate = (module, el) => <ModuleGate module={module}>{el}</ModuleGate>;
 
 /** Pages for the company admin only (or a custom role the admin granted the permission to). */

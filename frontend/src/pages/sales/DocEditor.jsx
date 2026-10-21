@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { get, patch, post } from '../../lib/api.js';
 import { ErrorAlert, Field, Loading } from '../../components/ui.jsx';
 import { RefSelect } from '../EntityForm.jsx';
+import { useAuth } from '../../lib/auth.jsx';
 import { TotalsTable } from './common.jsx';
 import { phoneChars, validateField, validateForm } from '../../lib/validation.js';
 
@@ -104,6 +105,7 @@ function ItemRow({ item, products, defaultTax, onChange, onRemove, canRemove, er
 
 /** Create / edit form for quotations (kind="quote") and invoices (kind="invoice"). */
 export function DocEditor({ kind }) {
+  const { hasModule } = useAuth();
   const { id } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -267,7 +269,7 @@ export function DocEditor({ kind }) {
             <div className="card-body stack">
               <Field label="Deal"><RefSelect entity="deals" value={doc.dealId} onChange={(v) => linkTo('dealId', v)} /></Field>
               <Field label="Contact"><RefSelect entity="contacts" value={doc.contactId} onChange={(v) => linkTo('contactId', v)} /></Field>
-              <Field label="Account"><RefSelect entity="accounts" value={doc.accountId} onChange={(v) => linkTo('accountId', v)} /></Field>
+              {hasModule('accounts') && <Field label="Account"><RefSelect entity="accounts" value={doc.accountId} onChange={(v) => linkTo('accountId', v)} /></Field>}
               {CUSTOMER_FIELDS.map(([k, l]) => (
                 <Field key={k} label={l} error={errors[`customer.${k}`]}><input className="input" aria-invalid={Boolean(errors[`customer.${k}`])} autoComplete="crm-record" maxLength={k === 'phone' ? 20 : undefined} value={doc.customer?.[k] || ''} onChange={(e) => setCustomer(k, k === 'phone' ? phoneChars(e.target.value) : e.target.value)} /></Field>
               ))}

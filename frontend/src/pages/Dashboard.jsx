@@ -44,6 +44,7 @@ const FOCUS = {
 
 /** Company KPIs from /dashboard (tenant-scoped on the server; sections outside the plan come back null). */
 function CompanyKpis({ data, activitiesTo }) {
+  const { hasModule } = useAuth();
   if (!data) {
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -54,7 +55,7 @@ function CompanyKpis({ data, activitiesTo }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {data.leads && <Stat icon={Target} tone="primary" label="Total leads" to="/leads" value={data.leads.total.toLocaleString()} hint={`+${data.leads.newThisMonth} new this month`} />}
-      {data.customers && <Stat icon={Contact} tone="teal" label="Customers" to="/contacts" value={data.customers.total.toLocaleString()} hint={`${data.customers.contacts} contacts · ${data.customers.accounts} accounts`} />}
+      {data.customers && <Stat icon={Contact} tone="teal" label="Customers" to="/contacts" value={data.customers.total.toLocaleString()} hint={hasModule('accounts') ? `${data.customers.contacts} contacts · ${data.customers.accounts} accounts` : `${data.customers.contacts} contacts`} />}
       {data.deals && <Stat icon={Handshake} tone="sky" label="Open deals" to="/pipelines" value={data.deals.open.toLocaleString()} hint={`${money(data.deals.openValue)} in pipeline`} />}
       <Stat icon={IndianRupee} tone="amber" label="Revenue won" to="/deals?stage=won" value={money(data.revenue.wonDeals)} hint={data.revenue.invoicesPaid ? `${money(data.revenue.invoicesPaid)} invoices paid` : 'From won deals'} />
       {data.deals && <Stat icon={Trophy} tone="teal" label="Won / lost" to="/deals?stage=won" value={`${data.deals.won} / ${data.deals.lost}`} hint={`Win rate ${data.conversionRate.deals}%`} />}

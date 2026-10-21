@@ -52,15 +52,21 @@ describe('CRM records & timeline', () => {
     const tl = await http().get(`/api/v1/timeline/lead/${lead.body.id}`).set(admin.auth);
     expect(tl.body.items[0].type).toBe('lead_created');
 
+    // Accounts are off by default: the company stays on the contact as text
     const conv = await http().post(`/api/v1/leads/${lead.body.id}/convert`).set(admin.auth).send({});
     expect(conv.status).toBe(200);
-    expect(conv.body.contact.firstName).toBe('Rahul');
-    expect(conv.body.account.name).toBe('Infra Co');
+    expect(conv.body.contact).toMatchObject({ firstName: 'Rahul', company: 'Infra Co' });
+    expect(conv.body.account).toBeNull();
     expect(conv.body.deal.value).toBe(250000);
     const again = await http().post(`/api/v1/leads/${lead.body.id}/convert`).set(admin.auth).send({});
     expect(again.status).toBe(400);
 
-    const acctTl = await http().get(`/api/v1/timeline/account/${conv.body.account.id}`).set(admin.auth);
+    // A company that uses Accounts (Settings → Features) gets one on convert
+    expect((await http().patch('/api/v1/organization/settings').set(admin.auth).send({ features: { accounts: true } })).body.settings.features).toEqual({ accounts: true });
+    const b2b = await http().post('/api/v1/leads').set(admin.auth).send({ name: 'Sita Rao', phone: '98765 43211', company: 'Infra Co' });
+    const conv2 = await http().post(`/api/v1/leads/${b2b.body.id}/convert`).set(admin.auth).send({});
+    expect(conv2.body.account.name).toBe('Infra Co');
+    const acctTl = await http().get(`/api/v1/timeline/account/${conv2.body.account.id}`).set(admin.auth);
     expect(acctTl.body.items.map((i) => i.type)).toContain('lead_converted');
   });
 
