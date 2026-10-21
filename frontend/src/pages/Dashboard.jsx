@@ -35,11 +35,12 @@ const SeeAll = ({ to, children = 'View all' }) => (
   <Link to={to} className="inline-flex items-center gap-1 text-xs font-semibold hover:no-underline">{children}<ArrowRight className="size-3" /></Link>
 );
 
-function heat(score) {
-  if (score >= 70) return { label: 'Hot', cls: 'bg-destructive/10 text-destructive' };
-  if (score >= 40) return { label: 'Warm', cls: 'bg-warning/15 text-[color-mix(in_oklch,var(--warning)_75%,var(--foreground))]' };
-  return { label: 'Cold', cls: 'bg-info/12 text-info' };
-}
+// Why a lead is on the home work list
+const FOCUS = {
+  today: { label: 'New today', cls: 'bg-success/15 text-success' },
+  not_updated: { label: 'Not updated', cls: 'bg-warning/15 text-[color-mix(in_oklch,var(--warning)_75%,var(--foreground))]' },
+  follow_up: { label: '⏰ Follow-up', cls: 'bg-info/12 text-info' },
+};
 
 /** Company KPIs from /dashboard (tenant-scoped on the server; sections outside the plan come back null). */
 function CompanyKpis({ data, activitiesTo }) {
@@ -109,7 +110,8 @@ export function Dashboard() {
   const dash = useAsync(() => get('/dashboard'), []);
   const stats = useAsync(() => (calling ? get('/analytics/me', { from: start.toISOString() }) : none()), [calling]);
   const tasks = useAsync(() => (hasModule('tasks') ? get('/tasks', { status: 'open', assigneeId: user.id, limit: 8 }) : none()), [user.id]);
-  const hot = useAsync(() => (hasModule('leads') ? get('/leads', { sort: '-score', limit: 6 }) : none()), []);
+  // Work list: assigned today, then older leads never updated, then follow-ups due (closed leads left out)
+  const hot = useAsync(() => (hasModule('leads') ? get('/leads/focus', { limit: 8 }) : none()), []);
   const callbacks = useAsync(() => (calling ? get('/callbacks', { status: 'pending,notified', mine: 1 }) : none()), [calling]);
   const k = stats.data?.kpis || {};
   const d = dash.data;
@@ -220,25 +222,25 @@ export function Dashboard() {
         )}
 
         {hasModule('leads') && (
-          <Panel title="Hottest leads" icon={Flame} action={<SeeAll to="/leads" />}>
+          <Panel title={`Leads to work on${hot.data?.total ? ` · ${hot.data.total}` : ''}`} icon={Flame} action={<SeeAll to="/leads" />}>
             {hot.data?.items?.length ? (
               <ul className="divide-y">
                 {hot.data.items.map((l) => {
-                  const h = heat(l.score || 0);
+                  const f = FOCUS[l.focus];
                   return (
                     <li key={l.id} className="flex items-center gap-3 px-5 py-3">
                       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-chart-1 to-chart-2 text-xs font-bold text-white">{l.name.slice(0, 2).toUpperCase()}</span>
                       <span className="min-w-0 flex-1">
                         <Link to={`/leads/${l.id}`} className="block truncate text-sm font-medium text-foreground">{l.name}</Link>
-                        <span className="block truncate text-xs text-muted-foreground">{[l.company, l.phone].filter(Boolean).join(' · ') || 'No contact details'}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{[l.focus === 'follow_up' && l.nextFollowUpAt ? `due ${dateTime(l.nextFollowUpAt)}` : null, l.company, l.phone].filter(Boolean).join(' · ') || 'No contact details'}</span>
                       </span>
-                      <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', h.cls)}>{h.label} · {l.score ?? 0}</span>
+                      <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold', f.cls)}>{f.label}</span>
                       {calling && <CallButton phone={l.phone} name={l.name} related={{ leadId: l.id }} />}
                     </li>
                   );
                 })}
               </ul>
-            ) : <Empty icon={Target}>No leads yet. <Link to="/leads?new=1">Add your first lead</Link></Empty>}
+            ) : <Empty icon={Target}>All caught up — no new or due leads. <Link to="/leads?new=1">Add a lead</Link></Empty>}
           </Panel>
         )}
 

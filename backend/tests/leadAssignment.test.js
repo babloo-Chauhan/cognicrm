@@ -141,6 +141,41 @@ describe('lead assignment and visibility', () => {
     expect(final.assignees.sort()).toEqual([mohan.user.id, ravi.user.id].sort());
   });
 
+  it('home work list: assigned today first, then old leads never updated, then follow-ups; closed leads left out', async () => {
+    const { Lead } = await import('../src/models/index.js');
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const make = async (name, extra = {}, daysAgo = 0) => {
+      const lead = (await http().post('/api/v1/leads').set(admin.auth).send({ name, ownerId: ravi.user.id, ...extra })).body;
+      if (daysAgo) {
+        const at = new Date(Date.now() - daysAgo * 86400000);
+        await Lead.updateOne({ _id: lead.id }, { createdAt: at, 'assignments.0.at': at });
+      }
+      return lead;
+    };
+    await make('Old untouched', {}, 3);
+    await make('Older untouched', {}, 5);
+    await make('Old contacted', { status: 'contacted' }, 4); // worked on, no follow-up: not on the list
+    await make('Follow-up overdue', { status: 'contacted', nextFollowUpAt: new Date(Date.now() - 2 * 86400000) }, 6);
+    await make('Follow-up later', { status: 'qualified', nextFollowUpAt: new Date(Date.now() + 5 * 86400000) }, 6);
+    await make('Lost one', { status: 'lost' }, 0);
+    await make('Converted one', { status: 'converted' }, 0);
+    await make('Fresh A');
+    await new Promise((r) => setTimeout(r, 15));
+    await make('Fresh B');
+    await http().post('/api/v1/leads').set(admin.auth).send({ name: 'Admin own' }); // not Ravi's
+
+    const res = await http().get('/api/v1/leads/focus').set(ravi.auth);
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((l) => [l.name, l.focus])).toEqual([
+      ['Fresh B', 'today'], ['Fresh A', 'today'],
+      ['Old untouched', 'not_updated'], ['Older untouched', 'not_updated'],
+      ['Follow-up overdue', 'follow_up'],
+    ]);
+    expect(res.body.counts).toEqual({ today: 2, not_updated: 2, follow_up: 1 });
+    expect((await http().get('/api/v1/leads/focus').query({ limit: 2 }).set(ravi.auth)).body.items).toHaveLength(2);
+  });
+
   it('the AI assistant only finds leads the person may see', async () => {
     const { TOOLS } = await import('../src/modules/ai/tools.js');
     const { User } = await import('../src/models/index.js');

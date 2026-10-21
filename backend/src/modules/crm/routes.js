@@ -16,6 +16,7 @@ import { scoreDeal, scoreLead } from '../ai/insights.js';
 import { notifyTaskAssigned } from '../notifications/reminders.js';
 import { notify } from '../notifications/service.js';
 import { leadScope, visibleLead } from './leadAccess.js';
+import { reportPeriod } from '../reports/service.js';
 
 const router = Router();
 // Each entity checks `<resource>:<action>` (see crudRouter `resource`); extra routes check explicitly below.
@@ -170,6 +171,44 @@ async function leadAssigned(doc, req, owner, previousOwnerId) {
     });
   }
 }
+
+// Leads that need no more work: never on the home page's work list
+const CLOSED_LEADS = ['lost', 'unqualified', 'converted', 'won'];
+const FOCUS_ORDER = { today: 0, not_updated: 1, follow_up: 2 };
+
+/**
+ * The person's leads to work on next, for the home page, in this order:
+ *  1. assigned (or created) today — newest first
+ *  2. from earlier days and still "new" (status never updated) — newest first
+ *  3. follow-up due today or overdue — most overdue first
+ * Lost / unqualified / converted / won leads are left out. Each item says why it is there (`focus`).
+ */
+router.get('/leads/focus', requirePermission('leads:read'), async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
+  const today = await reportPeriod(req.orgId, {}).then((p) => p.to);
+  const { start, end } = await reportPeriod(req.orgId, { from: today, to: today });
+  const leads = await Lead.aggregate([
+    { $match: { organizationId: req.orgId, status: { $nin: CLOSED_LEADS } } },
+    { $match: leadScope(req) || {} },
+    // When it reached its current holder: the latest hand-over, else when it was created
+    { $addFields: { assignedAt: { $ifNull: [{ $max: '$assignments.at' }, '$createdAt'] } } },
+    { $match: { $or: [{ assignedAt: { $gte: start } }, { status: 'new' }, { nextFollowUpAt: { $lt: end } }] } },
+    { $project: { name: 1, phone: 1, company: 1, status: 1, score: 1, ownerId: 1, nextFollowUpAt: 1, assignedAt: 1 } },
+    { $sort: { assignedAt: -1 } },
+    { $limit: 1000 },
+  ]);
+  const focusOf = (l) => {
+    if (l.assignedAt >= start) return 'today';
+    if (l.status === 'new') return 'not_updated';
+    return 'follow_up';
+  };
+  const items = leads.map((l) => ({ ...l, id: String(l._id), _id: undefined, focus: focusOf(l) }))
+    .sort((a, b) => FOCUS_ORDER[a.focus] - FOCUS_ORDER[b.focus]
+      || (a.focus === 'follow_up' ? a.nextFollowUpAt - b.nextFollowUpAt : b.assignedAt - a.assignedAt));
+  const counts = { today: 0, not_updated: 0, follow_up: 0 };
+  for (const l of items) counts[l.focus] += 1;
+  res.json({ items: items.slice(0, limit), counts, total: items.length });
+});
 
 router.post('/leads/:id/score', requirePermission('leads:update'), async (req, res) => {
   if (!await visibleLead(req, req.params.id)) throw notFound('Lead');
