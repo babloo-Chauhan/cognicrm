@@ -633,6 +633,7 @@ export async function logNativeCallOutcome(call, { durationSeconds = 0, connecte
     call.durationSeconds = Math.round(durationSeconds);
     await call.save();
     await syncCallActivity(call);
+    broadcastCall(call); // the web shows the exact talk time, not the estimate sent when it ended
   }
   return call;
 }

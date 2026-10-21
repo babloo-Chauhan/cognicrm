@@ -48,7 +48,8 @@ async function getAccessToken() {
  * Sends one notification to one FCM device token.
  * Returns { ok: true } or { ok: false, unregistered } — unregistered tokens should be deleted.
  */
-export async function sendFcm(token, { title, body, data = {}, highPriority = false }) {
+/** `silent`: data only (no notification block), so the app's own code handles it even when closed. */
+export async function sendFcm(token, { title, body, data = {}, highPriority = false, silent = false }) {
   const sa = serviceAccount();
   if (!sa) {
     if (!warnedUnconfigured) console.warn('FCM: no Firebase service account (FIREBASE_SERVICE_ACCOUNT_FILE) — Android push is not sent');
@@ -57,10 +58,12 @@ export async function sendFcm(token, { title, body, data = {}, highPriority = fa
   }
   const message = {
     token,
-    notification: { title, body },
+    ...(silent ? {} : { notification: { title, body } }),
     // FCM data values must be strings
     data: Object.fromEntries(Object.entries(data).filter(([, v]) => v != null).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])),
-    android: { priority: highPriority ? 'HIGH' : 'NORMAL', notification: { channel_id: 'calls', sound: 'default' } },
+    android: silent
+      ? { priority: highPriority ? 'HIGH' : 'NORMAL' }
+      : { priority: highPriority ? 'HIGH' : 'NORMAL', notification: { channel_id: 'calls', sound: 'default' } },
   };
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
     method: 'POST',

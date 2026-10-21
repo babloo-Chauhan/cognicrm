@@ -21,6 +21,8 @@ export async function notifyMany(orgId, userIds, payload) {
 
 // Time-critical pushes: an incoming call, or a call started on the web to be placed from the phone.
 const HIGH_PRIORITY = ['incoming_call', 'dial_request'];
+// Sent as data only, so the app (not Android) handles it — even closed, it rings the customer with no tap
+const SILENT = ['dial_request'];
 const isExpoToken = (token) => token.startsWith('ExponentPushToken') || token.startsWith('ExpoPushToken');
 
 async function sendPush(orgId, userId, payload) {
@@ -28,14 +30,16 @@ async function sendPush(orgId, userId, payload) {
   await Promise.all([
     sendExpoPush(orgId, tokens.filter((t) => isExpoToken(t.token)), payload),
     ...tokens.filter((t) => t.provider === 'fcm' && !isExpoToken(t.token)).map(async (t) => {
-      const r = await sendFcm(t.token, { ...payload, highPriority: HIGH_PRIORITY.includes(payload.data.type) });
+      const r = await sendFcm(t.token, { ...payload, highPriority: HIGH_PRIORITY.includes(payload.data.type), silent: SILENT.includes(payload.data.type) });
       if (r.unregistered) await PushToken.deleteOne({ organizationId: orgId, token: t.token });
     }),
   ]);
 }
 
 async function sendExpoPush(orgId, tokens, { title, body, data }) {
-  const messages = tokens.map((t) => ({ to: t.token, title, body, data, sound: 'default', priority: HIGH_PRIORITY.includes(data.type) ? 'high' : 'default' }));
+  const messages = tokens.map((t) => (SILENT.includes(data.type)
+    ? { to: t.token, data, priority: 'high', _contentAvailable: true }
+    : { to: t.token, title, body, data, sound: 'default', priority: HIGH_PRIORITY.includes(data.type) ? 'high' : 'default' }));
   if (!messages.length) return;
   const res = await fetch('https://exp.host/--/api/v2/push/send', {
     method: 'POST',
