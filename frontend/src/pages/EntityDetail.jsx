@@ -15,6 +15,7 @@ import { CallbackModal } from '../calling/CallbackModal.jsx';
 import { DocList } from './sales/DocList.jsx';
 import { ProcessSteps } from './sales/common.jsx';
 import { LeadAssignment } from './LeadAssignment.jsx';
+import { CallRecordings } from './CallRecordings.jsx';
 
 const PRIORITY_TONE = { high: 'danger', medium: 'warning', low: '' };
 
@@ -202,6 +203,7 @@ export function EntityDetail({ entity }) {
           )}
           {['leads', 'contacts', 'deals', 'accounts', 'tickets'].includes(entity) && <Remarks type={cfg.type} id={data.id} onAdded={() => setTimelineKey((k) => k + 1)} />}
           {['deals', 'contacts', 'accounts'].includes(entity) && <SalesDocs type={cfg.type} id={data.id} />}
+          {['leads', 'contacts', 'deals', 'accounts'].includes(entity) && hasModule('calling') && <CallRecordings type={cfg.type} id={data.id} />}
           <div className="card">
             <div className="card-header"><h3>Activity timeline</h3></div>
             <div className="card-body stack">
