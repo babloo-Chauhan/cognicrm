@@ -96,6 +96,51 @@ describe('lead assignment and visibility', () => {
     expect(tl.body.items.filter((i) => i.type === 'lead_assigned').map((i) => i.title)).toContain('Lead assigned to Sita by Ravi');
   });
 
+  it('a salesperson can add a senior (or several people) to a lead without handing it over', async () => {
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const mohan = await addUser(admin, { role: 'sales_manager', name: 'Mohan' });
+    const sita = await addUser(admin, { role: 'sales_executive', name: 'Sita' });
+    const amit = await addUser(admin, { role: 'sales_executive', name: 'Amit' });
+    const lead = (await http().post('/api/v1/leads').set(ravi.auth).send({ name: 'Gupta Traders', phone: '9876500088' })).body;
+
+    // Someone without the lead cannot add people to it
+    expect((await http().post(`/api/v1/leads/${lead.id}/team`).set(sita.auth).send({ userId: sita.user.id })).status).toBe(404);
+
+    // Ravi adds his senior Mohan, then Sita: Ravi stays the owner, all three see and work on it
+    const added = await http().post(`/api/v1/leads/${lead.id}/team`).set(ravi.auth).send({ userId: mohan.user.id });
+    expect(added.status).toBe(201);
+    expect(added.body.ownerId).toBe(ravi.user.id);
+    expect(added.body.assignments.at(-1)).toMatchObject({ kind: 'added', from: null, to: mohan.user.id, by: ravi.user.id });
+    expect((await http().post(`/api/v1/leads/${lead.id}/team`).set(ravi.auth).send({ userId: sita.user.id })).status).toBe(201);
+    for (const who of [ravi, mohan, sita]) expect(await leadsOf(who)).toEqual(['Gupta Traders']);
+    expect(await leadsOf(amit)).toEqual([]);
+    expect((await http().patch(`/api/v1/leads/${lead.id}`).set(mohan.auth).send({ status: 'contacted' })).status).toBe(200);
+
+    // Mohan is told and can call straight away
+    const n = (await notes(mohan)).find((x) => x.type === 'lead_assigned');
+    expect(n.title).toContain('Gupta Traders');
+    expect(n.body).toContain('Ravi added you');
+    expect(n.data).toMatchObject({ leadId: lead.id, phone: '+919876500088', action: 'call' });
+
+    // Adding the same person twice, or someone outside the company, is refused
+    expect((await http().post(`/api/v1/leads/${lead.id}/team`).set(ravi.auth).send({ userId: mohan.user.id })).status).toBe(400);
+    expect((await http().post(`/api/v1/leads/${lead.id}/team`).set(ravi.auth).send({ userId: '64b000000000000000000000' })).status).toBe(400);
+    // Anyone on the lead can bring in someone else too
+    expect((await http().post(`/api/v1/leads/${lead.id}/team`).set(mohan.auth).send({ userId: amit.user.id })).status).toBe(201);
+
+    // Only the admin takes people off (people may leave themselves); the owner cannot be removed this way
+    expect((await http().delete(`/api/v1/leads/${lead.id}/team/${amit.user.id}`).set(ravi.auth)).status).toBe(403);
+    expect((await http().delete(`/api/v1/leads/${lead.id}/team/${ravi.user.id}`).set(admin.auth)).status).toBe(400);
+    expect((await http().delete(`/api/v1/leads/${lead.id}/team/${amit.user.id}`).set(admin.auth)).status).toBe(200);
+    expect((await http().delete(`/api/v1/leads/${lead.id}/team/${sita.user.id}`).set(sita.auth)).status).toBe(200);
+    expect(await leadsOf(amit)).toEqual([]);
+    expect(await leadsOf(sita)).toEqual([]);
+    const final = (await http().get(`/api/v1/leads/${lead.id}`).set(admin.auth)).body;
+    expect(final.assignments.at(-1)).toMatchObject({ kind: 'removed', from: sita.user.id, to: null, by: sita.user.id });
+    expect(final.assignees.sort()).toEqual([mohan.user.id, ravi.user.id].sort());
+  });
+
   it('the AI assistant only finds leads the person may see', async () => {
     const { TOOLS } = await import('../src/modules/ai/tools.js');
     const { User } = await import('../src/models/index.js');

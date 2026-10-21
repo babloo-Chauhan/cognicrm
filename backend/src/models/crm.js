@@ -55,8 +55,9 @@ const leadSchema = new Schema({
   ownerId: { type: ObjectId, ref: 'User' },
   // Everyone who has held the lead (creator and each assignee). They keep seeing it after passing it on.
   assignees: [{ type: ObjectId, ref: 'User' }],
-  // Each hand-over, oldest first: who had it, who got it (null = unassigned), who did it, when
-  assignments: [{ _id: false, from: { type: ObjectId, ref: 'User' }, to: { type: ObjectId, ref: 'User' }, by: { type: ObjectId, ref: 'User' }, at: Date }],
+  // Each hand-over, oldest first: who had it, who got it (null = unassigned), who did it, when.
+  // kind 'added' = `to` joined the lead alongside the owner; 'removed' = `from` was taken off it.
+  assignments: [{ _id: false, kind: { type: String, enum: ['added', 'removed'] }, from: { type: ObjectId, ref: 'User' }, to: { type: ObjectId, ref: 'User' }, by: { type: ObjectId, ref: 'User' }, at: Date }],
   companySize: String,
   industry: String,
   estimatedValue: Number,

@@ -176,6 +176,56 @@ router.post('/leads/:id/score', requirePermission('leads:update'), async (req, r
   res.json(await scoreLead(req.orgId, req.params.id));
 });
 
+/**
+ * Adds a colleague (say a senior who should talk to the client too) to a lead without moving it:
+ * the owner stays, and the new person sees it and can work on it like everyone else it was assigned to.
+ * Allowed for the admin and for anyone who has the lead.
+ */
+router.post('/leads/:id/team', requirePermission('leads:update'), async (req, res) => {
+  const lead = await visibleLead(req, req.params.id);
+  if (!lead) throw notFound('Lead');
+  if (!hasPermission(req.user, 'team_leads:assign') && !sharesLead(lead, req.user)) throw forbidden('Only the admin or someone this lead was assigned to can add people to it');
+  const member = await assertAssignable(req.orgId, req.body?.userId);
+  if (!member) throw badRequest('Choose who to add');
+  const id = req.body.userId;
+  if (sharesLead(lead, { _id: id })) throw badRequest(`${member.name} already has this lead`);
+  lead.assignees.push(id);
+  lead.assignments.push({ kind: 'added', from: null, to: id, by: req.user._id, at: new Date() });
+  await lead.save();
+  await logActivity(req.orgId, {
+    type: 'lead_assigned', title: `${member.name} added to the lead by ${req.user.name}`,
+    related: { leadId: lead._id }, refType: 'Lead', refId: lead._id, userId: req.user._id,
+  });
+  if (String(id) !== String(req.user._id)) {
+    await notify(req.orgId, id, {
+      type: 'lead_assigned', title: `Lead shared with you: ${lead.name}`,
+      body: `${req.user.name} added you to this lead${lead.phone ? ` · ${lead.phone} — tap to call` : ''}`,
+      data: { leadId: String(lead._id), ...(lead.phone ? { phone: lead.phone, action: 'call' } : {}) },
+    });
+  }
+  res.status(201).json(lead.toJSON());
+});
+
+/** Takes someone off a lead (not the owner: reassign for that). The admin can remove anyone; people can remove themselves. */
+router.delete('/leads/:id/team/:userId', requirePermission('leads:update'), async (req, res) => {
+  const lead = await visibleLead(req, req.params.id);
+  if (!lead) throw notFound('Lead');
+  const id = req.params.userId;
+  const self = String(id) === String(req.user._id);
+  if (!hasPermission(req.user, 'team_leads:assign') && !self) throw forbidden('Only the admin can take someone off a lead');
+  if (String(lead.ownerId || '') === String(id)) throw badRequest('This person owns the lead — reassign it to someone else first');
+  if (!lead.assignees.some((a) => String(a) === String(id))) throw notFound('Person on this lead');
+  lead.assignees = lead.assignees.filter((a) => String(a) !== String(id));
+  lead.assignments.push({ kind: 'removed', from: id, to: null, by: req.user._id, at: new Date() });
+  await lead.save();
+  const member = await User.findById(id).select('name').lean();
+  await logActivity(req.orgId, {
+    type: 'lead_assigned', title: `${member?.name || 'Someone'} removed from the lead by ${req.user.name}`,
+    related: { leadId: lead._id }, refType: 'Lead', refId: lead._id, userId: req.user._id,
+  });
+  res.json(lead.toJSON());
+});
+
 router.use('/leads', crudRouter(Lead, {
   sortable: ['createdAt', 'updatedAt', 'score'],
   rules: FIELD_RULES.leads,
