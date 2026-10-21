@@ -601,9 +601,14 @@ export async function monitorCall(call, supervisor, mode) {
 }
 
 /** Mobile/native calls: the app reports what happened on the phone's own dialer. */
-export async function logNativeCallOutcome(call, { durationSeconds = 0, connected }) {
+/**
+ * Outcome of a call placed through the phone's dialer. `placed: false` means the phone's call log shows
+ * no such call (the dialer was opened and closed): the call is canceled, not counted as unanswered.
+ */
+export async function logNativeCallOutcome(call, { durationSeconds = 0, connected, placed }) {
   if (call.mode !== 'native') throw badRequest('Only native calls can be logged manually');
   if (isTerminal(call.status)) return call;
+  if (placed === false) return finalizeCall(call, { finalStatus: 'canceled' });
   if (connected || durationSeconds > 0) {
     call.answeredAt = new Date(Date.now() - durationSeconds * 1000);
   }

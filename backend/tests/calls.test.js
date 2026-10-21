@@ -184,6 +184,15 @@ describe('outbound calls', () => {
     expect(res.body.dial).toBe('tel:+919876543210');
     const logged = await http().post(`/api/v1/calls/${res.body.call.id}/log`).set(admin.auth).send({ durationSeconds: 61, connected: true });
     expect(logged.body).toMatchObject({ status: 'completed', durationSeconds: 61 });
+
+    // From the phone's call log: rang but not answered, and opened the dialer without calling
+    const unanswered = (await http().post('/api/v1/calls').set(admin.auth).send({ to: '9876543210', mode: 'native', source: 'mobile' })).body.call;
+    expect((await http().post(`/api/v1/calls/${unanswered.id}/log`).set(admin.auth).send({ durationSeconds: 0, connected: false })).body)
+      .toMatchObject({ status: 'no_answer', durationSeconds: 0 });
+    const notPlaced = (await http().post('/api/v1/calls').set(admin.auth).send({ to: '9876543210', mode: 'native', source: 'mobile' })).body.call;
+    const canceled = await http().post(`/api/v1/calls/${notPlaced.id}/log`).set(admin.auth).send({ durationSeconds: 0, connected: false, placed: false });
+    expect(canceled.body).toMatchObject({ status: 'canceled', durationSeconds: 0 });
+    expect(canceled.body.answeredAt).toBeFalsy();
   });
 
   it('restricts call history to own calls for agents and exports CSV safely', async () => {

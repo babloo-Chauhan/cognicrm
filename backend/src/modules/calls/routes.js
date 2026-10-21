@@ -222,7 +222,7 @@ router.post('/calls/:id/disposition', validate(dispositionSchema), async (req, r
   res.json(await applyDisposition(req.orgId, req.user, req.params.id, req.body));
 });
 
-router.post('/calls/:id/log', validate(z.object({ durationSeconds: z.number().min(0).max(86400), connected: z.boolean().optional() })), async (req, res) => {
+router.post('/calls/:id/log', validate(z.object({ durationSeconds: z.number().min(0).max(86400), connected: z.boolean().optional(), placed: z.boolean().optional() })), async (req, res) => {
   const call = await ownCallOr(req, 'calls:control_all');
   res.json(await logNativeCallOutcome(call, req.body));
 });
