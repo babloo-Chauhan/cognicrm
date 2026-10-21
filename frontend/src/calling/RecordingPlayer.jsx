@@ -28,7 +28,7 @@ function Player({ src }) {
     else a.pause();
   };
   return (
-    <div className="row" style={{ gap: 6, alignItems: 'center', flexWrap: 'nowrap', minWidth: 300 }}>
+    <div style={{ display: 'grid', gap: 4, minWidth: 250, maxWidth: 360 }}>
       <audio
         ref={audio}
         src={src}
@@ -41,9 +41,16 @@ function Player({ src }) {
         onLoadedMetadata={(e) => { setLength(e.currentTarget.duration); e.currentTarget.playbackRate = speed; }}
         onDurationChange={(e) => setLength(e.currentTarget.duration)}
       />
-      <button type="button" className="btn btn-sm" onClick={() => seek(time - 10)} title="Back 10 seconds" aria-label="Back 10 seconds">⏪ 10</button>
-      <button type="button" className="btn btn-sm btn-primary" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} style={{ minWidth: 34 }}>{playing ? '❚❚' : '▶'}</button>
-      <button type="button" className="btn btn-sm" onClick={() => seek(time + 10)} title="Forward 10 seconds" aria-label="Forward 10 seconds">10 ⏩</button>
+      <div className="row" style={{ gap: 4, alignItems: 'center', flexWrap: 'nowrap' }}>
+        <button type="button" className="btn btn-sm" onClick={() => seek(time - 10)} title="Back 10 seconds" aria-label="Back 10 seconds">⏪ 10</button>
+        <button type="button" className="btn btn-sm btn-primary" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} style={{ minWidth: 34 }}>{playing ? '❚❚' : '▶'}</button>
+        <button type="button" className="btn btn-sm" onClick={() => seek(time + 10)} title="Forward 10 seconds" aria-label="Forward 10 seconds">10 ⏩</button>
+        <span className="small muted" style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', marginLeft: 'auto' }}>{clock(time)} / {clock(length)}</span>
+        <select className="input" value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="Playback speed" style={{ width: 'auto', padding: '0 4px', height: 26, fontSize: 12 }}>
+          {SPEEDS.map((s) => <option key={s} value={s}>{s}×</option>)}
+        </select>
+      </div>
+      {/* The whole call: drag anywhere to jump there */}
       <input
         type="range"
         min={0}
@@ -52,12 +59,8 @@ function Player({ src }) {
         value={Math.min(time, length || 0)}
         onChange={(e) => seek(Number(e.target.value))}
         aria-label="Position in the recording"
-        style={{ flex: 1, minWidth: 90, accentColor: 'var(--primary)' }}
+        style={{ width: '100%', accentColor: 'var(--primary)', margin: 0 }}
       />
-      <span className="small muted" style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{clock(time)} / {clock(length)}</span>
-      <select className="input" value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="Playback speed" style={{ width: 'auto', padding: '2px 6px', height: 28 }}>
-        {SPEEDS.map((s) => <option key={s} value={s}>{s}×</option>)}
-      </select>
     </div>
   );
 }
