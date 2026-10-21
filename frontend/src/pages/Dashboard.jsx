@@ -172,7 +172,7 @@ export function Dashboard() {
             <PipelineChart stages={d.pipeline} />
           </Panel>
         )}
-        {d?.upcomingMeetings && (
+        {d?.upcomingMeetings && hasModule('appointments') && (
           <Panel title="Upcoming meetings" icon={CalendarClock}>
             {d.upcomingMeetings.length ? (
               <ul className="divide-y">

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { del, get, patch, upload } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
+import { FEATURES } from '../lib/features.js';
 import { useAsync } from '../lib/hooks.js';
 import { ErrorAlert, Field, Skeleton } from '../components/ui.jsx';
 import { phoneChars, validateForm } from '../lib/validation.js';
@@ -77,7 +78,7 @@ export function CompanySettings() {
     taxSettings: { taxName: 'GST', defaultRate: 18, pricesIncludeTax: false, ...(s.taxSettings || {}) },
     emailSettings: { fromName: '', replyTo: '', ...(s.emailSettings || {}) },
     // Optional parts of the CRM a company can leave out so its team only sees what it uses
-    features: { accounts: false, ...(s.features || {}) },
+    features: { ...Object.fromEntries(Object.entries(FEATURES).map(([k, f]) => [k, f.on])), ...(s.features || {}) },
   };
   const setP = (k, v) => setProfile({ ...p, [k]: v });
   const setAddr = (k, v) => setProfile({ ...p, address: { ...p.address, [k]: v } });
@@ -189,10 +190,12 @@ export function CompanySettings() {
       </div></div>
       <div className="card"><div className="card-header"><h3>Features your team uses</h3></div><div className="card-body stack">
         <p className="small muted" style={{ margin: 0 }}>Switch off what your team does not use: it disappears from the web and the mobile app. Nothing is deleted — switch it back on any time.</p>
-        <label className="checkbox">
-          <input type="checkbox" disabled={!editable} checked={Boolean(pr.features.accounts)} onChange={(e) => setNested('features', 'accounts', e.target.checked)} />
-          <span><strong>Accounts</strong> <span className="muted">— customer companies with several contacts and deals (B2B). Off: a contact&apos;s company is just a text field.</span></span>
-        </label>
+        {Object.entries(FEATURES).filter(([, f]) => company?.modules?.includes(f.module)).map(([k, f]) => (
+          <label key={k} className="checkbox">
+            <input type="checkbox" disabled={!editable} checked={Boolean(pr.features[k])} onChange={(e) => setNested('features', k, e.target.checked)} />
+            <span><strong>{f.label}</strong> <span className="muted">— {f.hint}</span></span>
+          </label>
+        ))}
       </div></div>
       {editable && <div className="row"><button type="button" className="btn btn-primary right" onClick={save}>Save changes</button></div>}
     </div>

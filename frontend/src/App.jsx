@@ -34,7 +34,7 @@ const SuperAdminApp = lazy(() => import('./pages/superadmin/SuperAdminApp.jsx').
 const ENTITIES = ['leads', 'contacts', 'accounts', 'deals', 'tickets', 'tasks', 'products'];
 const NO_DETAIL = ['tasks', 'products'];
 // Plan module behind each page (see backend src/lib/modules.js)
-const MODULE_OF = { leads: 'leads', contacts: 'customers', accounts: 'accounts', deals: 'deals', tickets: 'support', tasks: 'tasks', products: 'invoices' };
+const MODULE_OF = { leads: 'leads', contacts: 'customers', accounts: 'accounts', deals: 'deals', tickets: 'support', tasks: 'tasks', products: 'sales' };
 const gate = (module, el) => <ModuleGate module={module}>{el}</ModuleGate>;
 
 /** Pages for the company admin only (or a custom role the admin granted the permission to). */
@@ -79,12 +79,12 @@ function Shell() {
             <Route path="pipelines" element={gate('deals', <Pipelines />)} />
             <Route path="reports" element={<AdminOnly permission="reports:team"><Reports /></AdminOnly>} />
             <Route path="reports/employees/:id" element={<AdminOnly permission="reports:team"><EmployeeReport /></AdminOnly>} />
-            <Route path="sales" element={gate('invoices', <SalesOverview />)} />
+            <Route path="sales" element={gate('sales', <SalesOverview />)} />
             {[['quote', 'quotes'], ['invoice', 'invoices']].map(([kind, path]) => [
-              <Route key={`${path}-l`} path={path} element={gate('invoices', <DocList kind={kind} />)} />,
-              <Route key={`${path}-n`} path={`${path}/new`} element={gate('invoices', <DocEditor key="new" kind={kind} />)} />,
-              <Route key={`${path}-e`} path={`${path}/:id/edit`} element={gate('invoices', <DocEditor kind={kind} />)} />,
-              <Route key={`${path}-d`} path={`${path}/:id`} element={gate('invoices', <DocDetail kind={kind} />)} />,
+              <Route key={`${path}-l`} path={path} element={gate('sales', <DocList kind={kind} />)} />,
+              <Route key={`${path}-n`} path={`${path}/new`} element={gate('sales', <DocEditor key="new" kind={kind} />)} />,
+              <Route key={`${path}-e`} path={`${path}/:id/edit`} element={gate('sales', <DocEditor kind={kind} />)} />,
+              <Route key={`${path}-d`} path={`${path}/:id`} element={gate('sales', <DocDetail kind={kind} />)} />,
             ])}
             <Route path="inbox" element={gate('whatsapp', <Inbox />)} />
             <Route path="calling" element={gate('calling', <Suspense fallback={<Loading />}><CallingPage /></Suspense>)} />

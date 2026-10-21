@@ -57,10 +57,10 @@ const NAV = [
   {
     group: 'Sales',
     items: [
-      { to: '/sales', label: 'Sales pipeline', icon: ChartNoAxesCombined, module: 'invoices', permission: 'sales:read' },
-      { to: '/quotes', label: 'Quotations', icon: FileText, module: 'invoices', permission: 'sales:read' },
-      { to: '/invoices', label: 'Invoices', icon: Receipt, module: 'invoices', permission: 'sales:read' },
-      { to: '/products', label: 'Products', icon: Package, module: 'invoices', permission: 'sales:read' },
+      { to: '/sales', label: 'Sales pipeline', icon: ChartNoAxesCombined, module: 'sales', permission: 'sales:read' },
+      { to: '/quotes', label: 'Quotations', icon: FileText, module: 'sales', permission: 'sales:read' },
+      { to: '/invoices', label: 'Invoices', icon: Receipt, module: 'sales', permission: 'sales:read' },
+      { to: '/products', label: 'Products', icon: Package, module: 'sales', permission: 'sales:read' },
     ],
   },
   {

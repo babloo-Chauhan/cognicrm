@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { get, post, setToken, setUnauthorizedHandler, getToken } from './api.js';
 import { hasPermission } from './permissions.js';
+import { FEATURES } from './features.js';
 
 const AuthContext = createContext(null);
 const COMPANIES_KEY = 'cognieos.companies';
@@ -72,10 +73,11 @@ export function AuthProvider({ children }) {
     startSession: applySession,
     refresh: loadSession,
     can: (permission) => hasPermission(state.user, permission),
-    // Modules the company's current plan includes (core pages are always on). "accounts" is part of
-    // customers, but only shows when the company switched Accounts on (Settings → Features)
+    // Modules the company's current plan includes (core pages are always on). Some parts of a module are
+    // optional features the company can switch off (Settings → Features your team uses)
     hasModule: (module) => {
-      if (module === 'accounts') return Boolean(state.company?.modules?.includes('customers')) && state.organization?.settings?.features?.accounts === true;
+      const feature = FEATURES[module];
+      if (feature) return Boolean(state.company?.modules?.includes(feature.module)) && (state.organization?.settings?.features?.[module] ?? feature.on) === true;
       return !module || Boolean(state.company?.modules?.includes(module));
     },
   }), [state, companies, login, register, logout, switchCompany, applySession, loadSession]);

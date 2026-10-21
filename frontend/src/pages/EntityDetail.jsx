@@ -179,9 +179,9 @@ export function EntityDetail({ entity }) {
           <button type="button" className="btn btn-primary" onClick={() => setEditing(data)}>Edit</button>
         </div>
       </div>
-      {entity === 'leads' && <ProcessSteps step={data.status === 'converted' ? 1 : 0} />}
-      {entity === 'deals' && <ProcessSteps step={DEAL_STEP[data.stage] ?? (data.stage === 'proposal' || data.stage === 'negotiation' ? 2 : 1)} links={data.leadId ? { 0: `/leads/${data.leadId}` } : {}} />}
-      {entity === 'deals' && data.stage !== 'won' && data.stage !== 'lost' && (
+      {entity === 'leads' && hasModule('sales') && <ProcessSteps step={data.status === 'converted' ? 1 : 0} />}
+      {entity === 'deals' && hasModule('sales') && <ProcessSteps step={DEAL_STEP[data.stage] ?? (data.stage === 'proposal' || data.stage === 'negotiation' ? 2 : 1)} links={data.leadId ? { 0: `/leads/${data.leadId}` } : {}} />}
+      {entity === 'deals' && hasModule('sales') && data.stage !== 'won' && data.stage !== 'lost' && (
         <div className="alert alert-info row" style={{ marginBottom: 12 }}>
           <span>Next step: send this customer a quotation.</span>
           <button type="button" className="btn btn-sm btn-primary right" onClick={() => navigate(`/quotes/new?dealId=${data.id}`)}>Create quotation</button>
@@ -202,7 +202,7 @@ export function EntityDetail({ entity }) {
             </div>
           )}
           {['leads', 'contacts', 'deals', 'accounts', 'tickets'].includes(entity) && <Remarks type={cfg.type} id={data.id} onAdded={() => setTimelineKey((k) => k + 1)} />}
-          {['deals', 'contacts', 'accounts'].includes(entity) && <SalesDocs type={cfg.type} id={data.id} />}
+          {['deals', 'contacts', 'accounts'].includes(entity) && hasModule('sales') && <SalesDocs type={cfg.type} id={data.id} />}
           {['leads', 'contacts', 'deals', 'accounts'].includes(entity) && hasModule('calling') && <CallRecordings type={cfg.type} id={data.id} />}
           <div className="card">
             <div className="card-header"><h3>Activity timeline</h3></div>
