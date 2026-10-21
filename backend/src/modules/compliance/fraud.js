@@ -23,7 +23,8 @@ export async function assertWithinCallLimits(org, { userId, phone, now = new Dat
   const f = org.settings?.fraud || {};
   const orgId = org._id;
 
-  if (f.blockUnexpectedInternational !== false && f.allowedCountryCodes?.length && !matchCallingCode(phone, f.allowedCountryCodes)) {
+  // Only full international numbers (+…) can be foreign; service numbers like 121 or 1800… are dialled locally
+  if (f.blockUnexpectedInternational !== false && f.allowedCountryCodes?.length && String(phone).startsWith('+') && !matchCallingCode(phone, f.allowedCountryCodes)) {
     await createAlert(orgId, {
       type: 'fraud.international', severity: 'critical', userId,
       message: `Blocked unexpected international call to ${phone}`, data: { phone },

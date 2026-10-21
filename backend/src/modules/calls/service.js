@@ -3,7 +3,7 @@ import {
   Call, CallParticipant, Callback, Organization, PhoneNumber, PushToken, TERMINAL_STATUSES, User,
 } from '../../models/index.js';
 import { AppError, badRequest, notFound } from '../../lib/errors.js';
-import { isValidE164, normalizePhone } from '../../lib/phone.js';
+import { isServiceNumber, isValidE164, normalizePhone } from '../../lib/phone.js';
 import { emitToOrg, emitToUser } from '../../lib/realtime.js';
 import { emitEvent } from '../../lib/eventBus.js';
 import { requireTelephonyProvider, getTelephonyProvider } from '../telephony/registry.js';
@@ -83,7 +83,10 @@ export async function initiateOutboundCall({
 }) {
   const org = await Organization.findById(orgId).lean();
   const customerNumber = normalizePhone(to, org.settings?.defaultCountryCode);
-  if (!isValidE164(customerNumber)) throw badRequest(`"${to}" is not a valid phone number`);
+  // Service numbers (121, 1800…) can only be dialled from the phone itself
+  const serviceNumber = isServiceNumber(customerNumber, org.settings?.defaultCountryCode || '91');
+  if (serviceNumber && mode !== 'native' && mode !== 'device') throw badRequest(`"${to}" is a service number: call it from the mobile app`);
+  if (!serviceNumber && !isValidE164(customerNumber)) throw badRequest(`"${to}" is not a valid phone number`);
 
   if (!skipCompliance) await assertCanCall(org, { phone: customerNumber, related });
   await assertWithinCallLimits(org, { userId: user?._id, phone: customerNumber });

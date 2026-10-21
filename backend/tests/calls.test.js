@@ -195,6 +195,18 @@ describe('outbound calls', () => {
     expect(canceled.body.answeredAt).toBeFalsy();
   });
 
+  it('service numbers (121, toll-free) are dialled as they are from the phone, never with +91', async () => {
+    const { normalizePhone } = await import('../src/lib/phone.js');
+    expect(normalizePhone('121')).toBe('121');
+    expect(normalizePhone('1800-102-1234')).toBe('18001021234');
+    expect(normalizePhone('98765 43210')).toBe('+919876543210');
+    const { admin } = await setup();
+    const res = await http().post('/api/v1/calls').set(admin.auth).send({ to: '121', mode: 'native', source: 'mobile' });
+    expect(res.status).toBe(201);
+    expect(res.body.dial).toBe('tel:121');
+    expect((await http().post('/api/v1/calls').set(admin.auth).send({ to: '121', mode: 'bridge' })).status).toBe(400);
+  });
+
   it('stores the recording made by the phone call recorder; the admin can play it', async () => {
     const fs = await import('node:fs');
     const { applyRecordingRetention } = await import('../src/modules/recordings/service.js');
