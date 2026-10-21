@@ -10,8 +10,12 @@ const PAGE = 25;
 /** Talk time; "~" marks an estimate (calls from an older app version, not read from the phone's call log). */
 const talk = (c) => (c.answeredAt ? `${c.mode === 'native' && !c.durationFromCallLog ? '~' : ''}${duration(c.durationSeconds || 0)}` : '—');
 
-function Recording({ c }) {
-  if (c.hasRecording) return <RecordingPlayer callId={c.id} />;
+function Recording({ c, playing, onPlay }) {
+  if (c.hasRecording) {
+    return playing
+      ? <span className="small" style={{ color: 'var(--primary)', fontWeight: 600 }}>♪ Playing above</span>
+      : <button type="button" className="btn btn-sm" onClick={onPlay}>▶ Play</button>;
+  }
   if (c.deviceRecording === 'not_found') {
     return <span className="small" style={{ color: 'var(--warning)' }} title="The phone had no recording of this call: its call recorder is off">Recorder off</span>;
   }
@@ -22,6 +26,8 @@ function Recording({ c }) {
 export function CallRecordings({ type, id }) {
   const [limit, setLimit] = useState(PAGE);
   const [onlyRecorded, setOnlyRecorded] = useState(false);
+  // The recording being played, in a full-width player above the list (room for the seek bar)
+  const [playing, setPlaying] = useState(null);
   const { data, error, loading } = useAsync(() => get('/calls', { [`${type}Id`]: id, limit }), [type, id, limit]);
   if (error) return <div className="card"><div className="card-body"><ErrorAlert error={error} /></div></div>;
   const all = data?.items || [];
@@ -44,6 +50,15 @@ export function CallRecordings({ type, id }) {
           {data.total > all.length && ` (latest ${all.length} shown)`}
         </div>
       )}
+      {playing && (
+        <div className="card-body" style={{ borderBottom: '1px solid var(--border)', paddingTop: 10 }}>
+          <div className="row small" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+            <span><strong>{dateTime(playing.startedAt)}</strong> <span className="muted">· {playing.agentId?.name || '—'} · talk {talk(playing)}</span></span>
+            <button type="button" className="btn btn-sm" onClick={() => setPlaying(null)} aria-label="Close player">✕</button>
+          </div>
+          <RecordingPlayer key={playing.id} callId={playing.id} autoLoad />
+        </div>
+      )}
       <div style={{ opacity: loading ? 0.6 : 1 }}>
         <DataTable
           rows={rows}
@@ -53,7 +68,7 @@ export function CallRecordings({ type, id }) {
             { key: 'who', label: 'By', render: (c) => c.agentId?.name || '—' },
             { key: 'dir', label: 'Call', render: (c) => <div>{label(c.direction)}<div className="small muted">{c.disposition?.label || label(c.status)}</div></div> },
             { key: 'talk', label: 'Talk time', render: talk },
-            { key: 'rec', label: 'Recording', render: (c) => <Recording c={c} /> },
+            { key: 'rec', label: 'Recording', render: (c) => <Recording c={c} playing={playing?.id === c.id} onPlay={() => setPlaying(c)} /> },
           ]}
         />
       </div>

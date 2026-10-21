@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { get } from '../lib/api.js';
 
 const SPEEDS = [1, 1.25, 1.5, 2];
@@ -28,7 +28,7 @@ function Player({ src }) {
     else a.pause();
   };
   return (
-    <div style={{ display: 'grid', gap: 4, minWidth: 250, maxWidth: 360 }}>
+    <div style={{ display: 'grid', gap: 4, minWidth: 250, width: '100%' }}>
       <audio
         ref={audio}
         src={src}
@@ -65,11 +65,11 @@ function Player({ src }) {
   );
 }
 
-/** Fetches a short-lived signed URL on demand; recordings are never public. */
-export function RecordingPlayer({ recordingId, callId }) {
+/** Fetches a short-lived signed URL on demand; recordings are never public. `autoLoad` starts at once. */
+export function RecordingPlayer({ recordingId, callId, autoLoad = false }) {
   const [src, setSrc] = useState(null);
   const [error, setError] = useState(null);
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null);
     try {
       let id = recordingId;
@@ -83,8 +83,13 @@ export function RecordingPlayer({ recordingId, callId }) {
     } catch (e) {
       setError(e.message);
     }
-  };
+  }, [recordingId, callId]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch the signed link when asked to start right away
+    if (autoLoad) load();
+  }, [autoLoad, load]);
   if (src) return <Player src={src} />;
+  if (autoLoad && !error) return <span className="small muted">Loading recording…</span>;
   return (
     <span className="row">
       <button type="button" className="btn btn-sm" onClick={load}>▶ Play</button>
