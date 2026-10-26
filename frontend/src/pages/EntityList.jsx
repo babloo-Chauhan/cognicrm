@@ -12,6 +12,7 @@ import { EntityForm } from './EntityForm.jsx';
 import { ExportButtons, ImportModal } from './ImportExport.jsx';
 import { OwnerName, useTeam } from '../lib/team.js';
 import { useAuth } from '../lib/auth.jsx';
+import { BulkAssignBar, SelectBox } from './BulkAssign.jsx';
 
 const PAGE_SIZE = 50;
 
@@ -49,7 +50,8 @@ export function EntityList({ entity }) {
     ['ownerId', ...(cfg.filters || []).map((f) => f.key)].filter((k) => params.get(k)).map((k) => [k, params.get(k)]),
   ));
   const team = useTeam();
-  const { user } = useAuth();
+  const auth = useAuth();
+  const { user } = auth;
   const [creating, setCreating] = useState(null);
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -65,6 +67,12 @@ export function EntityList({ entity }) {
     () => get(`/${entity}`, { q: search || undefined, ...filter, page: pageNo, limit: PAGE_SIZE }),
     [entity, search, filter, pageNo],
   );
+  // The admin can tick leads (or every matching lead) and hand them out at once
+  const canBulkAssign = entity === 'leads' && auth.can('team_leads:assign');
+  const [selection, setSelection] = useState({ ids: new Set(), key: '' });
+  const selectKey = JSON.stringify([entity, search, filter]); // a new search or filter starts a new selection
+  const picked = selection.key === selectKey ? selection : { ids: new Set(), key: selectKey };
+  const [assigned, setAssigned] = useState(null);
 
   // e.g. /contacts?new=1&phone=… from the inbound call popup
   useEffect(() => {
@@ -116,11 +124,24 @@ export function EntityList({ entity }) {
     }
   };
 
+  const pageIds = (data?.items || []).map((r) => r.id);
+  const pickedOnPage = pageIds.filter((id) => picked.all || picked.ids.has(id)).length;
+  const setPicked = (ids) => setSelection({ ids, key: selectKey });
+  const pickRow = (id, on) => { const ids = new Set(picked.all ? pageIds : picked.ids); if (on) ids.add(id); else ids.delete(id); setPicked(ids); };
+  const pickPage = (on) => { const ids = new Set(picked.all ? [] : picked.ids); for (const id of pageIds) if (on) ids.add(id); else ids.delete(id); setPicked(ids); };
+
   const columns = cfg.columns.map((key) => ({
     key,
     label: cfg.fields.find((f) => f.key === key)?.label || label(key),
     render: (row) => cell(entity, cfg, key, row),
   }));
+  if (canBulkAssign) {
+    columns.unshift({
+      key: 'select',
+      label: <SelectBox label="Select all on this page" checked={pageIds.length > 0 && pickedOnPage === pageIds.length} indeterminate={pickedOnPage > 0 && pickedOnPage < pageIds.length} onChange={pickPage} />,
+      render: (row) => <SelectBox label={`Select ${cfg.nameOf(row)}`} checked={Boolean(picked.all || picked.ids.has(row.id))} onChange={(on) => pickRow(row.id, on)} />,
+    });
+  }
   if (entity === 'tasks') {
     columns.push({
       key: 'actions', label: '',
@@ -157,6 +178,7 @@ export function EntityList({ entity }) {
             <select className="input w-auto min-w-[160px]" value={filter.ownerId || ''} onChange={(e) => setFilter({ ...filter, ownerId: e.target.value })} aria-label="Filter by owner">
               <option value="">Everyone's {cfg.title.toLowerCase()}</option>
               {user && <option value={user.id}>My {cfg.title.toLowerCase()}</option>}
+              {canBulkAssign && <option value="none">Unassigned</option>}
               {team.filter((u) => u.id !== user?.id).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           )}
@@ -168,6 +190,26 @@ export function EntityList({ entity }) {
           ))}
           {loading && data && <span className="ml-auto text-xs text-muted-foreground">Updating…</span>}
         </div>
+        {assigned && (
+          <div className="flex items-center gap-2 border-b bg-emerald-500/10 px-4 py-2 text-sm" role="status">
+            <span className="flex-1">
+              {assigned.perUser.length
+                ? <>Assigned {assigned.assigned.toLocaleString('en-IN')} lead{assigned.assigned === 1 ? '' : 's'}: {assigned.perUser.map((p) => `${p.name} ${p.count}`).join(' · ')}</>
+                : <>Unassigned {assigned.assigned.toLocaleString('en-IN')} lead{assigned.assigned === 1 ? '' : 's'}</>}
+              {assigned.unchanged > 0 && <span className="text-muted-foreground"> ({assigned.unchanged} already with that person)</span>}
+            </span>
+            <button type="button" className="btn btn-sm" onClick={() => setAssigned(null)} aria-label="Dismiss">OK</button>
+          </div>
+        )}
+        {canBulkAssign && (picked.all || picked.ids.size > 0) && (
+          <BulkAssignBar
+            selection={picked} pageCount={pageIds.length} total={data?.total || 0}
+            filter={{ q: search || undefined, ...filter }}
+            onSelectAll={() => setSelection({ all: true, ids: new Set(), key: selectKey })}
+            onClear={() => setPicked(new Set())}
+            onDone={(r) => { setAssigned(r); setPicked(new Set()); reload(); }}
+          />
+        )}
         {loading && !data ? <Loading /> : (
           <DataTable
             columns={columns}

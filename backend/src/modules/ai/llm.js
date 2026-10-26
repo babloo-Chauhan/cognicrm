@@ -61,7 +61,9 @@ export class AnthropicLlm extends LlmProvider {
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 // Gemini counts its internal "thinking" against maxOutputTokens, so leave room for it on top of the answer.
 const GEMINI_THINKING_HEADROOM = 4096;
-const GEMINI_RETRIES = 2;
+// A busy model (503 / short 429) is retried once quickly, then the fallback model is tried
+const GEMINI_RETRIES = 1;
+const GEMINI_TIMEOUT_MS = 25000;
 
 function parseToolResult(content) {
   if (typeof content !== 'string') return content;
@@ -106,10 +108,14 @@ export class GeminiLlm extends LlmProvider {
     this.name = 'gemini';
   }
 
-  async complete({ system, messages, tools, maxTokens = 1024, toolChoice }) {
+  async complete({ system, messages, tools, maxTokens = 1024, toolChoice, fast = false }) {
     const body = {
       contents: toGeminiContents(messages),
-      generationConfig: { maxOutputTokens: maxTokens + GEMINI_THINKING_HEADROOM },
+      generationConfig: {
+        maxOutputTokens: maxTokens + GEMINI_THINKING_HEADROOM,
+        // Chat replies: think briefly. Models that do not take a thinking level get the request without it.
+        ...(fast ? { thinkingConfig: { thinkingLevel: 'low' } } : {}),
+      },
       ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
       ...(tools?.length ? { tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.input_schema })) }] } : {}),
       ...(toolChoice?.type === 'tool' ? { toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [toolChoice.name] } } } : {}),
@@ -165,14 +171,26 @@ export class GeminiLlm extends LlmProvider {
     // Gemini often answers 503 "high demand" / 429 for a few seconds; retry those briefly.
     // A used-up quota (429 mentioning quota) does not recover in seconds, so it is not retried.
     for (let attempt = 0; attempt <= GEMINI_RETRIES; attempt += 1) {
-      if (attempt) await new Promise((r) => { setTimeout(r, 1500 * attempt); });
-      res = await fetch(`${GEMINI_URL}/${encodeURIComponent(model)}:generateContent`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(60000),
-      });
+      if (attempt) await new Promise((r) => { setTimeout(r, 800 * attempt); });
+      try {
+        res = await fetch(`${GEMINI_URL}/${encodeURIComponent(model)}:generateContent`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+        });
+      } catch (err) {
+        // Timed out: treat like "busy" so the fallback model gets a turn
+        if (err.name !== 'TimeoutError' && err.name !== 'AbortError') throw err;
+        return { ok: false, status: 503, statusText: 'timeout', data: { error: { message: 'The model took too long to answer' } } };
+      }
       data = await res.json().catch(() => ({}));
+      if (res.status === 400 && body.generationConfig?.thinkingConfig && /thinking/i.test(data.error?.message || '')) {
+        // This model does not take a thinking level (e.g. older 2.5 models): ask again without it
+        delete body.generationConfig.thinkingConfig;
+        attempt -= 1;
+        continue;
+      }
       if (![429, 500, 503].includes(res.status) || /quota/i.test(data.error?.message || '')) break;
     }
     return { ok: res.ok, status: res.status, statusText: res.statusText, data };

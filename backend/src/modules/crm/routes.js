@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import {
-  Account, Appointment, Contact, Deal, Lead, Note, Order, Organization, Task, Ticket, User,
+  Account, Activity, Appointment, Contact, Deal, Lead, Note, Order, Organization, Task, Ticket, User,
 } from '../../models/index.js';
 import { hasPermission, requirePermission } from '../../middleware/auth.js';
 import { checkLimit } from '../saas/usage.js';
 import { validateDealStage } from './pipelines.js';
 import { normalizePhone } from '../../lib/phone.js';
 import { AppError, badRequest, forbidden, notFound } from '../../lib/errors.js';
-import { crudRouter } from './crud.js';
+import { crudRouter, listFilter } from './crud.js';
 import { IO_SPECS } from './importExport.js';
 import { FIELD_RULES } from './fieldRules.js';
 import { getCustomerContext } from './lookup.js';
@@ -15,6 +15,8 @@ import { getTimeline, logActivity } from '../timeline/service.js';
 import { scoreDeal, scoreLead } from '../ai/insights.js';
 import { notifyTaskAssigned } from '../notifications/reminders.js';
 import { notify } from '../notifications/service.js';
+import { audit } from '../../lib/audit.js';
+import { bumpCompany } from '../../lib/cache.js';
 import { leadScope, visibleLead } from './leadAccess.js';
 import { reportPeriod } from '../reports/service.js';
 
@@ -267,14 +269,93 @@ router.delete('/leads/:id/team/:userId', requirePermission('leads:update'), asyn
   res.json(lead.toJSON());
 });
 
+const LEAD_SEARCH = ['name', 'email', 'phone', 'company'];
+const LEAD_FILTERS = ['status', 'source', 'ownerId', 'assignees'];
+const BULK_ASSIGN_MAX = 10000;
+
+/**
+ * The admin hands many leads out at once: the ticked `ids`, or every lead matching the list's `filter`
+ * (search, status, owner — `ownerId: 'none'` for the unassigned ones). One person in `userIds` gets them all;
+ * several share them in turn (round-robin, newest lead first); none unassigns them. Each lead keeps its trail
+ * like a single reassign, and each person gets one notification for their batch instead of one per lead.
+ */
+router.post('/leads/bulk-assign', requirePermission('leads:update'), requirePermission('team_leads:assign'), async (req, res) => {
+  const { ids, filter, userIds } = req.body || {};
+  if (!Array.isArray(userIds)) throw badRequest('Choose who gets the leads');
+  const members = await Promise.all([...new Set(userIds.map(String))].map((id) => assertAssignable(req.orgId, id)));
+  const owners = [...new Set(userIds.map(String))];
+  let match;
+  if (Array.isArray(ids)) {
+    if (!ids.length) throw badRequest('Select at least one lead');
+    if (ids.some((id) => !/^[a-f0-9]{24}$/i.test(String(id)))) throw badRequest('Invalid lead ID');
+    match = { organizationId: req.orgId, _id: { $in: ids } };
+  } else if (filter && typeof filter === 'object') {
+    const query = Object.fromEntries(['q', ...LEAD_FILTERS].filter((k) => typeof filter[k] === 'string' && filter[k]).map((k) => [k, filter[k]]));
+    match = listFilter({ orgId: req.orgId, query }, LEAD_SEARCH, LEAD_FILTERS, Lead);
+  } else throw badRequest('Send the selected lead ids or the list filter');
+
+  const total = await Lead.countDocuments(match);
+  if (total > BULK_ASSIGN_MAX) throw badRequest(`At most ${BULK_ASSIGN_MAX.toLocaleString('en-IN')} leads at a time; narrow the filter`);
+  const leads = await Lead.find(match).sort({ createdAt: -1, _id: -1 });
+  const now = new Date();
+  const changed = [];
+  const received = new Map(); // owner id → their leads
+  const lost = new Map(); // previous owner id → how many moved away
+  leads.forEach((lead, i) => {
+    const to = owners.length ? owners[i % owners.length] : null;
+    const from = lead.ownerId ? String(lead.ownerId) : null;
+    if (from === to) return;
+    lead.ownerId = to;
+    lead.assignments.push({ from, to, by: req.user._id, at: now });
+    for (const id of [from, to]) if (id && !lead.assignees.some((a) => String(a) === id)) lead.assignees.push(id);
+    changed.push(lead);
+    if (to) { if (!received.has(to)) received.set(to, []); received.get(to).push(lead); }
+    if (from && from !== String(req.user._id)) lost.set(from, (lost.get(from) || 0) + 1);
+  });
+  if (changed.length) await Lead.bulkSave(changed);
+  bumpCompany(req.orgId);
+  await audit(req, 'leads.bulk_assign', { resourceType: 'Lead', details: { matched: leads.length, assigned: changed.length, userIds: owners } });
+
+  const nameOf = new Map(owners.map((id, i) => [id, members[i]?.name]));
+  await Activity.insertMany(changed.map((lead) => ({
+    organizationId: req.orgId, type: 'lead_assigned', userId: req.user._id, occurredAt: now, refType: 'Lead', refId: lead._id, links: { leadId: lead._id },
+    title: lead.ownerId ? `Lead assigned to ${nameOf.get(String(lead.ownerId))} by ${req.user.name}` : `Lead unassigned by ${req.user.name}`,
+  })));
+  for (const [id, mine] of received) {
+    if (id === String(req.user._id)) continue;
+    const one = mine.length === 1 ? mine[0] : null;
+    await notify(req.orgId, id, one ? {
+      type: 'lead_assigned', title: `New lead: ${one.name}`,
+      body: `Assigned to you by ${req.user.name}${one.phone ? ` · ${one.phone} — tap to call` : ''}`,
+      data: { leadId: String(one._id), ...(one.phone ? { phone: one.phone, action: 'call' } : {}) },
+    } : {
+      type: 'lead_assigned', title: `${mine.length} new leads assigned to you`,
+      body: `By ${req.user.name}. Open Leads to start calling.`, data: { count: mine.length },
+    });
+  }
+  for (const [id, count] of lost) {
+    if (received.has(id)) continue;
+    await notify(req.orgId, id, {
+      type: 'lead_reassigned', title: count === 1 ? 'A lead was moved' : `${count} leads were moved`,
+      body: `${req.user.name} reassigned ${count === 1 ? 'it' : 'them'}. ${count === 1 ? 'It stays' : 'They stay'} in your leads too.`, data: { count },
+    });
+  }
+  res.json({
+    matched: leads.length,
+    assigned: changed.length,
+    unchanged: leads.length - changed.length,
+    perUser: owners.map((id) => ({ userId: id, name: nameOf.get(id), count: received.get(id)?.length || 0 })),
+  });
+});
+
 router.use('/leads', crudRouter(Lead, {
   sortable: ['createdAt', 'updatedAt', 'score'],
   rules: FIELD_RULES.leads,
   resource: 'leads',
   limit: 'leads',
   io: IO_SPECS.leads,
-  searchFields: ['name', 'email', 'phone', 'company'],
-  filterFields: ['status', 'source', 'ownerId', 'assignees'],
+  searchFields: LEAD_SEARCH,
+  filterFields: LEAD_FILTERS,
   scope: leadScope,
   onCreate: async (doc, req) => {
     // A lead without an owner belongs to whoever created it; the creator can hand it straight to someone

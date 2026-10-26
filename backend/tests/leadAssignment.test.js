@@ -189,3 +189,67 @@ describe('lead assignment and visibility', () => {
     expect((await TOOLS.list_leads.handler({ orgId: admin.org.id, user: boss }, {})).map((l) => l.name).sort()).toEqual(['Hidden Lead', 'Ravi Lead']);
   });
 });
+
+describe('bulk assign', () => {
+  const bulk = (who, body) => http().post('/api/v1/leads/bulk-assign').set(who.auth).send(body);
+
+  it('shares the ticked leads in turn, keeps each trail and sends one notification per person', async () => {
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const sita = await addUser(admin, { role: 'sales_executive', name: 'Sita' });
+    const ids = [];
+    for (let i = 1; i <= 5; i += 1) ids.push((await http().post('/api/v1/leads').set(admin.auth).send({ name: `Lead ${i}` })).body.id);
+
+    const res = await bulk(admin, { ids, userIds: [ravi.user.id, sita.user.id] });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ matched: 5, assigned: 5, unchanged: 0 });
+    expect(res.body.perUser.map((p) => p.count)).toEqual([3, 2]);
+    expect((await leadsOf(ravi))).toHaveLength(3);
+    expect((await leadsOf(sita))).toHaveLength(2);
+
+    const lead = (await http().get(`/api/v1/leads/${ids[0]}`).set(admin.auth)).body;
+    expect(lead.assignments.at(-1)).toMatchObject({ from: admin.user.id, by: admin.user.id });
+    const raviNotes = (await notes(ravi)).filter((n) => n.type === 'lead_assigned');
+    expect(raviNotes).toHaveLength(1);
+    expect(raviNotes[0].title).toBe('3 new leads assigned to you');
+    expect((await http().get(`/api/v1/timeline/lead/${ids[0]}`).set(admin.auth)).body.items.some((a) => a.type === 'lead_assigned')).toBe(true);
+
+    // Running it again with the same people changes nothing for leads already where they belong
+    const again = await bulk(admin, { ids: [ids[0]], userIds: [lead.ownerId] });
+    expect(again.body).toMatchObject({ assigned: 0, unchanged: 1 });
+  });
+
+  it('assigns every lead matching the filter, e.g. all unassigned ones', async () => {
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const sita = await addUser(admin, { role: 'sales_executive', name: 'Sita' });
+    const csv = 'Name,Phone\nA One,9876500001\nB Two,9876500002\nC Three,9876500003\n';
+    const imp = await http().post('/api/v1/leads/import').query({ format: 'csv' }).set(admin.auth).set('Content-Type', 'text/csv').send(csv);
+    expect(imp.body.created).toBe(3);
+    await http().post('/api/v1/leads').set(admin.auth).send({ name: 'Already Sita', ownerId: sita.user.id });
+
+    const unassigned = await http().get('/api/v1/leads').query({ ownerId: 'none' }).set(admin.auth);
+    expect(unassigned.body.total).toBe(3);
+
+    const res = await bulk(admin, { filter: { ownerId: 'none' }, userIds: [ravi.user.id] });
+    expect(res.body).toMatchObject({ matched: 3, assigned: 3 });
+    expect(await leadsOf(ravi)).toEqual(['A One', 'B Two', 'C Three']);
+    expect((await http().get('/api/v1/leads').query({ ownerId: 'none' }).set(admin.auth)).body.total).toBe(0);
+  });
+
+  it('is for the admin only and checks the people and ids', async () => {
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const other = await registerOrg();
+    const id = (await http().post('/api/v1/leads').set(ravi.auth).send({ name: 'Mine' })).body.id;
+    expect((await bulk(ravi, { ids: [id], userIds: [ravi.user.id] })).status).toBe(403);
+    expect((await bulk(admin, { ids: [id], userIds: [other.user.id] })).status).toBe(400);
+    expect((await bulk(admin, { ids: [], userIds: [ravi.user.id] })).status).toBe(400);
+    expect((await bulk(admin, { userIds: [ravi.user.id] })).status).toBe(400);
+    // Another company's lead is never touched
+    expect((await bulk(other, { ids: [id], userIds: [other.user.id] })).body.matched).toBe(0);
+    // No one chosen unassigns
+    expect((await bulk(admin, { ids: [id], userIds: [] })).body.assigned).toBe(1);
+    expect((await http().get(`/api/v1/leads/${id}`).set(admin.auth)).body.ownerId).toBeFalsy();
+  });
+});

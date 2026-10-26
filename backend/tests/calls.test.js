@@ -195,6 +195,32 @@ describe('outbound calls', () => {
     expect(canceled.body.answeredAt).toBeFalsy();
   });
 
+  it('app dialer: a new number becomes a lead with only the number, filled in after the call', async () => {
+    const admin = await registerOrg();
+    const rep = await addUser(admin, { role: 'sales_executive' });
+    // Unknown number: no lead or contact holds it
+    const before = await http().get('/api/v1/customer-context').query({ phone: '98111 22334' }).set(rep.auth);
+    expect(before.status).toBe(200);
+    expect(before.body.lead).toBeNull();
+    expect(before.body.contact).toBeNull();
+    const lead = await http().post('/api/v1/leads').set(rep.auth).send({ name: 'New lead 98111 22334', phone: '98111 22334', source: 'cold', status: 'new' });
+    expect(lead.status).toBe(201);
+    expect(lead.body).toMatchObject({ phone: '+919811122334', ownerId: rep.user.id });
+    const call = (await http().post('/api/v1/calls').set(rep.auth).send({ to: '98111 22334', mode: 'native', source: 'mobile', related: { leadId: lead.body.id } })).body.call;
+    expect(call.related.leadId).toBe(lead.body.id);
+    await http().post(`/api/v1/calls/${call.id}/log`).set(rep.auth).send({ durationSeconds: 0, connected: false });
+    // After the call: name, status and details from the wrap-up
+    const filled = await http().patch(`/api/v1/leads/${lead.body.id}`).set(rep.auth)
+      .send({ name: 'Priya Verma', status: 'contacted', company: 'Verma Traders', requirement: '50 chairs', nextFollowUpAt: new Date(Date.now() + 86400000).toISOString() });
+    expect(filled.status).toBe(200);
+    expect(filled.body).toMatchObject({ name: 'Priya Verma', status: 'contacted', company: 'Verma Traders' });
+    // Dialling the number again finds that lead, so no second lead is made
+    const again = await http().get('/api/v1/customer-context').query({ phone: '+919811122334' }).set(rep.auth);
+    expect(again.body.lead).toMatchObject({ name: 'Priya Verma' });
+    const next = (await http().post('/api/v1/calls').set(rep.auth).send({ to: '9811122334', mode: 'native', source: 'mobile' })).body.call;
+    expect(next.related.leadId).toBe(lead.body.id);
+  });
+
   it('service numbers (121, toll-free) are dialled as they are from the phone, never with +91', async () => {
     const { normalizePhone } = await import('../src/lib/phone.js');
     expect(normalizePhone('121')).toBe('121');

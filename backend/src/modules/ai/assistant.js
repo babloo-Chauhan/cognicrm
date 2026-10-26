@@ -27,6 +27,53 @@ function allowedTools(user) {
   return ASSISTANT_TOOLS.filter((n) => hasPermission(user, TOOLS[n].permission));
 }
 
+const bullets = (rows, fmt) => rows.slice(0, 10).map((r) => `- ${fmt(r)}`).join('\n') + (rows.length > 10 ? `\n- …and ${rows.length - 10} more` : '');
+const MINE = /\b(my|mine|mere|mera|meri|apne|apni)\b/;
+
+/**
+ * Common short questions (the suggestion chips, "call Rahul", "my hot leads", "aaj ki calls"…) answered
+ * straight from the CRM, without a round trip to the AI model — instant, and they keep working when the
+ * model is busy. Anything longer or less clear-cut goes to the model. Returns null when it does not apply.
+ */
+export async function quickAnswer(ctx, message) {
+  const raw = String(message || '').trim();
+  const text = raw.toLowerCase().replace(/[?.!]+$/, '').replace(/\s+/g, ' ');
+  if (!text || text.split(' ').length > 7) return null;
+  const can = (name) => ctx.allowed.includes(name);
+  const run = async (name, input) => ({ name, input, result: await executeTool(ctx, name, input) });
+  const done = (reply, tr) => ({ mode: 'ai', quick: true, reply, toolResults: tr ? [tr] : [], actions: ctx.actions });
+  const mine = MINE.test(text);
+
+  const call = raw.match(/^(?:call|phone|dial|ring)\s+(.+?)[.?!]*$/i) || raw.match(/^(.+?)\s+(?:ko\s+)?call\s+(?:karo|kar do|lagao)[.?!]*$/i);
+  if (call) {
+    const result = await prepareCall(ctx, { query: call[1] });
+    return done(result.ready ? `Ready to call **${result.name}** at ${result.phone}.` : result.reason, { name: 'prepare_call', input: { query: call[1] }, result });
+  }
+  if (can('list_leads') && /^(show |list |dikhao )?(my |mere |meri |all |sab |saari |sabhi )?hot leads?( dikhao| batao)?$/.test(text)) {
+    const tr = await run('list_leads', { filter: 'hot', mine });
+    return done(tr.result.length ? `${mine ? 'Your' : 'The'} hot leads:\n${bullets(tr.result, (l) => `**${l.name}**${l.company ? ` (${l.company})` : ''} · score ${l.score}`)}` : 'No hot leads right now.', tr);
+  }
+  if (can('list_leads') && /^(show |list )?(my |mere |meri |all |sab |saari |new )?leads?( dikhao| batao| list)?$/.test(text)) {
+    const tr = await run('list_leads', { filter: /\bnew\b/.test(text) ? 'new' : 'all', mine });
+    return done(tr.result.length ? `${mine ? 'Your' : 'Open'} leads:\n${bullets(tr.result, (l) => `**${l.name}**${l.company ? ` (${l.company})` : ''} · ${l.status}`)}` : 'No open leads.', tr);
+  }
+  if (can('list_deals') && /^(which |show |list )?(my |mere |meri |all )?deals? (need |needing |for )?follow[ -]?ups?( needed)?$|^follow[ -]?up deals?$/.test(text)) {
+    const tr = await run('list_deals', { needsFollowUp: true, mine });
+    return done(tr.result.length ? `Deals that need a follow-up:\n${bullets(tr.result, (d) => `**${d.name}** · ${d.stage}`)}` : 'No deals need a follow-up right now.', tr);
+  }
+  if (can('list_deals') && /^(show |list )?(my |mere |meri |all |open )?deals?( dikhao| batao| list)?$/.test(text)) {
+    const tr = await run('list_deals', { mine });
+    return done(tr.result.length ? `${mine ? 'Your' : 'Open'} deals:\n${bullets(tr.result, (d) => `**${d.name}** · ${d.stage}`)}` : 'No open deals.', tr);
+  }
+  if (can('list_calls') && /^(show |list )?(my |mere |meri |all )?(today'?s|todays|aaj ki|aaj ke|yesterday'?s|this week'?s) calls?( dikhao| batao)?$|^(my |mere )?calls (today|aaj)$/.test(text)) {
+    const period = /yesterday/.test(text) ? 'yesterday' : /week/.test(text) ? 'week' : 'today';
+    const tr = await run('list_calls', { period, mine: true });
+    const label = period === 'today' ? 'today' : period === 'yesterday' ? 'yesterday' : 'this week';
+    return done(tr.result.length ? `${tr.result.length} call(s) ${label}:\n${bullets(tr.result, (c) => `**${c.customer || c.customerPhone || 'Unknown'}** · ${c.status}${c.durationSeconds ? ` · ${Math.round(c.durationSeconds / 60)} min` : ''}`)}` : `No calls ${label}.`, tr);
+  }
+  return null;
+}
+
 /**
  * CRM assistant. With an AI provider configured it uses tool calling over explicit CRM tools;
  * without one it falls back to a deterministic command parser (clearly labelled mode: "rules").
@@ -36,6 +83,8 @@ export async function runAssistant(orgId, user, { message, history = [], context
   const ctx = { orgId, user, allowed, origin: 'assistant', actions: [] };
   const llm = await getLlm(orgId);
   if (!llm) return runRuleBased(ctx, message, context);
+  const quick = await quickAnswer(ctx, message);
+  if (quick) return quick;
 
   const system = [
     'You are the COGNIEOS CRM assistant for sales and support teams.',
@@ -50,7 +99,8 @@ export async function runAssistant(orgId, user, { message, history = [], context
   const messages = [...history.slice(-10), { role: 'user', content: message }];
   const toolResults = [];
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    const res = await llm.complete({ system, messages, tools: [...toolDefinitions(allowed), PREPARE_CALL], maxTokens: 1024 });
+    // fast: chat replies use little "thinking", which is most of the wait on thinking models
+    const res = await llm.complete({ system, messages, tools: [...toolDefinitions(allowed), PREPARE_CALL], maxTokens: 1024, fast: true });
     if (!res.toolCalls.length) {
       return { mode: 'ai', reply: res.text, toolResults, actions: ctx.actions };
     }

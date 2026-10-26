@@ -74,6 +74,29 @@ describe('AI with a configured model (scripted test LLM)', () => {
     expect(llm.calls[0].tools.map((t) => t.name)).not.toContain('transfer_call');
   });
 
+  it('answers common short questions instantly, without waiting for the model', async () => {
+    const admin = await registerOrg();
+    await Lead.create({ organizationId: admin.org.id, name: 'Hot Prospect', company: 'Mehta Steels', ownerId: admin.user.id, score: 85, phone: '+919800000099' });
+    await http().post('/api/v1/deals').set(admin.auth).send({ name: 'Office chairs', value: 50000 });
+    const llm = scriptedLlm([{ text: 'Model answer' }]);
+    setLlmOverride(llm);
+    const ask = (message) => http().post('/api/v1/ai/assistant').set(admin.auth).send({ message }).then((r) => r.body);
+
+    const hot = await ask('Show my hot leads');
+    expect(hot).toMatchObject({ mode: 'ai', quick: true });
+    expect(hot.reply).toContain('**Hot Prospect** (Mehta Steels) · score 85');
+    expect((await ask('mere leads dikhao')).reply).toContain('Hot Prospect');
+    expect((await ask('show my deals')).reply).toContain('**Office chairs**');
+    expect((await ask("Show today's calls")).reply).toBe('No calls today.');
+    const call = await ask('Hot Prospect ko call karo');
+    expect(call.actions[0]).toMatchObject({ type: 'call', phone: '+919800000099' });
+    expect(llm.calls).toHaveLength(0); // none of these waited for the model
+
+    // Anything else still goes to the model
+    expect((await ask('Which of my leads is most likely to buy this month and why?')).reply).toBe('Model answer');
+    expect(llm.calls).toHaveLength(1);
+  });
+
   it('voice agent uses only allowed tools and escalates on request', async () => {
     const admin = await registerOrg();
     const agent = await VoiceAgent.create({

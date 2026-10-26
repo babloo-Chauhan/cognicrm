@@ -36,9 +36,9 @@ const regexSearch = (q, searchFields) => {
 
 /**
  * List filter: company, ?q= search and ?field= filters. Models with search tokens (models/search.js) are
- * searched through their index by word prefix; others with a regex.
+ * searched through their index by word prefix; others with a regex. `?ownerId=none` lists records nobody owns.
  */
-function listFilter(req, searchFields, filterFields, Model, scope) {
+export function listFilter(req, searchFields, filterFields, Model, scope) {
   const filter = { organizationId: req.orgId };
   const only = scope?.(req);
   if (only) filter.$and = [only];
@@ -49,7 +49,7 @@ function listFilter(req, searchFields, filterFields, Model, scope) {
   }
   for (const f of filterFields) {
     const v = req.query[f];
-    if (v !== undefined && v !== '' && typeof v === 'string') filter[f] = v;
+    if (v !== undefined && v !== '' && typeof v === 'string') filter[f] = v === 'none' && /Id$/.test(f) ? null : v;
   }
   return filter;
 }
