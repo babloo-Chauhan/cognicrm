@@ -14,6 +14,7 @@ import { useAsync } from '../lib/hooks.js';
 import { CallButton } from '../calling/CallButton.jsx';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { DashboardInsights } from './DashboardInsights.jsx';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const CHART_COLORS = ['var(--chart-1)', 'var(--chart-5)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-2)', 'var(--chart-4)'];
@@ -156,6 +157,8 @@ export function Dashboard() {
 
       {/* Today's work by employee for the admin; otherwise the call history */}
       <CompanyKpis data={d} activitiesTo={can('reports:team') ? '/reports?period=today' : (calling ? '/calling?tab=history' : undefined)} />
+
+      <DashboardInsights />
 
       {calling && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
