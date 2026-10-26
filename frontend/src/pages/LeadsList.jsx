@@ -126,7 +126,7 @@ export function LeadsList() {
   const [q, setQ] = useState(() => params.get('q') || '');
   // ?ownerId= / ?status= come from reports and dashboard cards
   const [filter, setFilter] = useState(() => Object.fromEntries(['ownerId', 'status', 'source', 'reminder'].filter((k) => params.get(k)).map((k) => [k, params.get(k)])));
-  const [pageSize, setPageSize] = useState(() => readStore(SIZE_KEY, 25));
+  const [pageSize, setPageSize] = useState(() => readStore(SIZE_KEY, 10));
   const [hidden, setHidden] = useState(() => readStore(COLUMN_KEY, ['phone']));
   const [creating, setCreating] = useState(null);
   const [editing, setEditing] = useState(null);
