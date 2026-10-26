@@ -277,13 +277,32 @@ const FOLLOW_UP_TYPES = ['call', 'appointment', 'whatsapp', 'sms', 'email', 'not
 /** ?reminder=missed | today | upcoming | none: the lead's next follow-up against today in the company's time zone. */
 async function reminderFilter(req) {
   const r = req.query.reminder;
-  if (!['missed', 'today', 'upcoming', 'none'].includes(r)) return {};
+  if (!['missed', 'today', 'upcoming', 'none'].includes(r)) return null;
   if (r === 'none') return { nextFollowUpAt: null };
   const today = await reportPeriod(req.orgId, {}).then((p) => p.to);
   const { start, end } = await reportPeriod(req.orgId, { from: today, to: today });
   if (r === 'missed') return { nextFollowUpAt: { $lt: new Date(Math.min(Date.now(), end.getTime())) } };
   if (r === 'today') return { nextFollowUpAt: { $gte: start, $lt: end } };
   return { nextFollowUpAt: { $gte: end } };
+}
+
+/**
+ * ?from= / ?to= (ISO date-times, either may be left out) on the lead's created time, or with
+ * ?dateField=followUp on its next follow-up. The browser works out "today", "this week" … in the user's time.
+ */
+function dateRangeFilter(req) {
+  const parse = (v) => { const d = v ? new Date(String(v)) : null; return d && !Number.isNaN(d.getTime()) ? d : null; };
+  const from = parse(req.query.from);
+  const to = parse(req.query.to);
+  if (!from && !to) return null;
+  if (from && to && from > to) throw badRequest('The start date is after the end date');
+  const field = req.query.dateField === 'followUp' ? 'nextFollowUpAt' : 'createdAt';
+  return { [field]: { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) } };
+}
+
+async function leadListFilter(req) {
+  const parts = [await reminderFilter(req), dateRangeFilter(req)].filter(Boolean);
+  return parts.length > 1 ? { $and: parts } : parts[0] || null;
 }
 
 /** Adds each lead's latest follow-up ({ type, at, title }) to a page of list rows. */
@@ -384,7 +403,7 @@ router.use('/leads', crudRouter(Lead, {
   searchFields: LEAD_SEARCH,
   filterFields: LEAD_FILTERS,
   scope: leadScope,
-  queryFilter: reminderFilter,
+  queryFilter: leadListFilter,
   decorate: withLastFollowUp,
   onCreate: async (doc, req) => {
     // A lead without an owner belongs to whoever created it; the creator can hand it straight to someone

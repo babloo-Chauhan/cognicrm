@@ -18,6 +18,7 @@ import { ENTITY_CONFIG, validateEntity } from './entities.js';
 import { EntityForm } from './EntityForm.jsx';
 import { ImportModal } from './ImportExport.jsx';
 import { BulkAssignBar, SelectBox } from './BulkAssign.jsx';
+import { DateRangeFilter } from './DateRangeFilter.jsx';
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -162,6 +163,12 @@ export function LeadsList() {
   }, [params, setParams]);
 
   const setF = (k, v) => setFilter((f) => { const n = { ...f, [k]: v }; if (!v) delete n[k]; return n; });
+  const DATE_KEYS = ['dateField', 'from', 'to', 'range'];
+  const dateValue = filter.range ? { dateField: filter.dateField, from: filter.from, to: filter.to, range: filter.range } : null;
+  const setDate = (v) => setFilter((f) => {
+    const n = Object.fromEntries(Object.entries(f).filter(([k]) => !DATE_KEYS.includes(k)));
+    return v ? { ...n, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x)) } : n;
+  });
   const active = search || Object.keys(filter).length > 0;
   const show = (col) => !hidden.includes(col);
   const toggleColumn = (col) => { const next = hidden.includes(col) ? hidden.filter((c) => c !== col) : [...hidden, col]; setHidden(next); writeStore(COLUMN_KEY, next); };
@@ -226,6 +233,7 @@ export function LeadsList() {
         <FilterSelect labelText="Assignee" placeholder="Assignee" value={filter.ownerId} onChange={(v) => setF('ownerId', v)}
           options={[...(user ? [[user.id, 'Me']] : []), ...(canBulkAssign ? [['none', 'Unassigned']] : []), ...team.filter((u) => u.id !== user?.id).map((u) => [u.id, u.name])]} />
         <FilterSelect labelText="Reminders" placeholder="Reminders" value={filter.reminder} onChange={(v) => setF('reminder', v)} options={REMINDERS} />
+        <DateRangeFilter value={dateValue} onChange={setDate} />
         {active && <button type="button" className="inline-flex items-center gap-1 px-2 text-sm font-medium text-primary" onClick={() => { setQ(''); setFilter({}); }}><X className="size-3.5" />Clear filters</button>}
         {loading && data && <span className="ml-auto text-xs text-muted-foreground">Updating…</span>}
       </div>

@@ -146,7 +146,9 @@ export function crudRouter(Model, {
 
   router.get('/', async (req, res) => {
     const filter = listFilter(req, searchFields, filterFields, Model, scope);
-    if (queryFilter) Object.assign(filter, await queryFilter(req));
+    // Added as its own condition so it never replaces the visibility scope's $and
+    const extra = queryFilter ? await queryFilter(req) : null;
+    if (extra && Object.keys(extra).length) filter.$and = [...(filter.$and || []), extra];
     const { page, limit } = pageParams(req.query);
     const sort = sortParam(req.query.sort, defaultSort, [...new Set([...sortable, ...Object.keys(defaultSort)])]);
     // _id as a tie-breaker (same direction as the sort, so the indexes in the models serve it) keeps pages

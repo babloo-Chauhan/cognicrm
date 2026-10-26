@@ -275,3 +275,22 @@ describe('leads list extras', () => {
     expect(rows.find((l) => l.name === 'No reminder').lastFollowUp).toBeNull();
   });
 });
+
+describe('leads date filter', () => {
+  it('filters by created or follow-up date range, together with the reminder filter', async () => {
+    const admin = await registerOrg();
+    const ravi = await addUser(admin, { role: 'sales_executive', name: 'Ravi' });
+    const day = 86400000;
+    await http().post('/api/v1/leads').set(admin.auth).send({ name: 'Due soon', ownerId: ravi.user.id, nextFollowUpAt: new Date(Date.now() + 2 * day).toISOString() });
+    await http().post('/api/v1/leads').set(admin.auth).send({ name: 'Due later', ownerId: ravi.user.id, nextFollowUpAt: new Date(Date.now() + 20 * day).toISOString() });
+    const names = async (who, query) => (await http().get('/api/v1/leads').query(query).set(who.auth)).body.items.map((l) => l.name).sort();
+    const now = Date.now();
+    expect(await names(admin, { from: new Date(now - day).toISOString(), to: new Date(now + day).toISOString() })).toEqual(['Due later', 'Due soon']);
+    expect(await names(admin, { to: new Date(now - day).toISOString() })).toEqual([]);
+    expect(await names(admin, { dateField: 'followUp', from: new Date(now).toISOString(), to: new Date(now + 7 * day).toISOString() })).toEqual(['Due soon']);
+    expect(await names(admin, { dateField: 'followUp', reminder: 'upcoming', to: new Date(now + 30 * day).toISOString() })).toEqual(['Due later', 'Due soon']);
+    // The employee's visibility scope still applies alongside the date filter
+    expect(await names(ravi, { dateField: 'followUp', from: new Date(now + 10 * day).toISOString() })).toEqual(['Due later']);
+    expect((await http().get('/api/v1/leads').query({ from: new Date(now).toISOString(), to: new Date(now - day).toISOString() }).set(admin.auth)).status).toBe(400);
+  });
+});
