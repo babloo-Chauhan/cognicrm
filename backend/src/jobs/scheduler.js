@@ -12,6 +12,7 @@ import { expireQuotes, markOverdueInvoices } from '../modules/sales/service.js';
 import { remindDueTasks, remindLeadFollowUps, remindUpcomingAppointments } from '../modules/notifications/reminders.js';
 import { expireSubscriptions } from '../modules/saas/jobs.js';
 import { closeAbandonedNativeCalls } from '../modules/calls/service.js';
+import { pullDueIndiamart } from '../modules/leadCapture/connectors.js';
 
 /** Hangs up calls that exceed the organization's maximum call duration (fraud control). */
 export async function enforceMaxDuration(now = new Date()) {
@@ -43,6 +44,7 @@ const JOBS = [
   { name: 'appointment reminders', everyMs: 30000, run: remindUpcomingAppointments },
   { name: 'missed callbacks', everyMs: 3600000, run: markMissedCallbacks },
   { name: 'webhook retries', everyMs: 30000, run: retryFailedWebhooks },
+  { name: 'IndiaMART leads', everyMs: 60000, run: pullDueIndiamart },
   { name: 'max call duration', everyMs: 60000, run: enforceMaxDuration },
   { name: 'abandoned dialer calls', everyMs: 600000, run: closeAbandonedNativeCalls },
   { name: 'recording retention', everyMs: 3600000, run: applyRecordingRetention },

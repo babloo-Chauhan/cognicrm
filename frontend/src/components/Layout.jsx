@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useTheme } from '@/lib/theme';
 import {
   Bell, Bot, Building2, ChartColumnBig, ChartNoAxesCombined, ChevronDown, ChevronsUpDown, CircleHelp, Contact, CreditCard, FileText, Handshake,
-  Inbox, KeyRound, LayoutDashboard, ListChecks, LogOut, Menu, Mic, Monitor, Moon, Package, Phone, Plug, Plus, Receipt, Route, Search, Settings,
+  Inbox, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, Menu, Mic, Monitor, Moon, Package, Phone, Plug, Plus, Receipt, Route, Search, Settings,
   Sparkles, Sun, Target, Ticket, Users, Zap,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
@@ -78,6 +78,7 @@ const NAV = [
       { to: '/team', label: 'Team', icon: Users },
       { to: '/billing', label: 'Billing', icon: CreditCard },
       // Always listed for admins: the page explains how to unlock it when the plan lacks integrations
+      { to: '/lead-capture', label: 'Lead capture', icon: Magnet, module: 'leads', permission: 'settings:manage' },
       { to: '/integrations', label: 'Integrations', icon: Plug, permission: 'settings:manage' },
       { to: '/settings', label: 'Settings', icon: Settings },
     ],

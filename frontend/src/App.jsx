@@ -17,6 +17,8 @@ import { Billing } from './pages/Billing.jsx';
 import { TeamPage } from './pages/Team.jsx';
 import { Pipelines } from './pages/Pipelines.jsx';
 import { Integrations } from './pages/Integrations.jsx';
+import { LeadCapture } from './pages/LeadCapture.jsx';
+import { PublicForm } from './pages/PublicForm.jsx';
 import { Loading, ToastHost } from './components/ui.jsx';
 import { ModuleGate } from './components/ModuleGate.jsx';
 import { SalesOverview } from './pages/sales/SalesOverview.jsx';
@@ -92,6 +94,7 @@ function Shell() {
             <Route path="voice-agents" element={gate('ai', <VoiceAgents />)} />
             <Route path="billing" element={<Billing />} />
             <Route path="integrations" element={<Integrations />} />
+            <Route path="lead-capture" element={gate('leads', <LeadCapture />)} />
             <Route path="team" element={<TeamPage />} />
             <Route path="settings" element={<Settings />} />
             <Route path="register" element={<Navigate to="/" replace />} />
@@ -108,6 +111,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         {/* Platform console: separate login and token, independent of any company session */}
+        {/* Hosted lead form: customers fill it without signing in */}
+        <Route path="f/:token" element={<PublicForm />} />
         <Route path="super-admin/*" element={<Suspense fallback={<Loading />}><SuperAdminApp /></Suspense>} />
         <Route path="*" element={<AuthProvider><Shell /></AuthProvider>} />
       </Routes>

@@ -28,6 +28,7 @@ import salesRoutes, { publicSalesRouter } from './modules/sales/routes.js';
 import teamRoutes from './modules/saas/teamRoutes.js';
 import billingRoutes, { publicBillingRouter } from './modules/saas/billingRoutes.js';
 import platformRoutes, { platformPublicRouter } from './modules/platform/routes.js';
+import { capturePublicRouter, leadSourceRouter } from './modules/leadCapture/routes.js';
 import { registerListeners } from './listeners.js';
 
 const DB_STATES = ['disconnected', 'connected', 'connecting', 'disconnecting'];
@@ -69,7 +70,9 @@ export function createApp() {
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-  app.use(cors({ origin: env.corsOrigin.split(',').map((o) => o.trim()), credentials: true }));
+  // Lead capture takes enquiries from the company's own website, so any site may post to it (no cookies involved)
+  const corsOrigins = env.corsOrigin.split(',').map((o) => o.trim());
+  app.use(cors((req, cb) => cb(null, req.path.startsWith('/api/v1/capture/') ? { origin: true } : { origin: corsOrigins, credentials: true })));
   app.use(requestLogger);
   // Keep the raw body for webhook signature validation (Meta X-Hub-Signature-256, Razorpay, Stripe)
   app.use(express.json({ limit: '2mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
@@ -113,6 +116,8 @@ export function createApp() {
   api.use(webchatRouter);
   api.use(recordingPublicRoutes);
   api.use(ipFloodLimiter);
+  // Lead capture (website forms, Justdial, IndiaMART, Meta, Google Ads): unguessable token per source
+  api.use('/capture', limiter(60000, 120, ip), capturePublicRouter);
   api.use(AUTH_PATHS, authIpLimiter, authLimiter);
   api.use(apiLimiter);
   api.use(publicAuthRouter);
@@ -138,6 +143,7 @@ export function createApp() {
   api.use(messagingRoutes);
   api.use(aiRoutes);
   api.use(salesRoutes);
+  api.use(leadSourceRouter);
 
   app.use('/api/v1', api);
   app.use(notFoundHandler);

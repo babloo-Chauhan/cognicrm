@@ -197,3 +197,52 @@ const activitySchema = new Schema({
   },
 });
 export const Activity = model('Activity', activitySchema);
+
+/**
+ * Where leads come in from on their own: a website form, Justdial, IndiaMART, Facebook / Instagram ads,
+ * Google Ads, WhatsApp or any app that can call a webhook. Each has an unguessable `token` that is its public
+ * URL, and says who gets the leads (one person, or several in turn).
+ */
+export const LEAD_SOURCE_TYPES = ['webhook', 'form', 'justdial', 'indiamart', 'meta', 'google_ads', 'whatsapp'];
+const leadSourceSchema = new Schema({
+  name: { type: String, required: true, trim: true },
+  type: { type: String, enum: LEAD_SOURCE_TYPES, required: true },
+  token: { type: String, required: true, unique: true },
+  enabled: { type: Boolean, default: true },
+  leadSource: { type: String, trim: true }, // stored on each lead's `source`
+  // none: unassigned (the admin hands them out); user / round_robin: assignUserIds[0], or each in turn
+  assignMode: { type: String, enum: ['none', 'user', 'round_robin'], default: 'none' },
+  assignUserIds: [{ type: ObjectId, ref: 'User' }],
+  nextAssignee: { type: Number, default: 0 },
+  // An enquiry from a phone / email already in the CRM: add it to that lead (default) or make a new lead
+  onDuplicate: { type: String, enum: ['merge', 'create'], default: 'merge' },
+  config: { type: Schema.Types.Mixed, default: {} }, // per type: form fields, IndiaMART pull state, Meta page …
+  credentials: { type: String, select: false }, // encrypted: IndiaMART CRM key, Meta page token / app secret
+  stats: {
+    total: { type: Number, default: 0 },
+    duplicates: { type: Number, default: 0 },
+    failed: { type: Number, default: 0 },
+    lastLeadAt: Date,
+    lastError: String,
+    lastErrorAt: Date,
+  },
+});
+leadSourceSchema.index({ organizationId: 1, type: 1 });
+export const LeadSource = model('LeadSource', leadSourceSchema);
+
+/** One received enquiry and what became of it (kept 60 days); `key` stops the same enquiry being added twice. */
+const leadCaptureLogSchema = new Schema({
+  sourceId: { type: ObjectId, ref: 'LeadSource', required: true },
+  key: { type: String },
+  status: { type: String, enum: ['created', 'duplicate', 'failed', 'ignored'], required: true },
+  leadId: { type: ObjectId, ref: 'Lead' },
+  name: String,
+  phone: String,
+  email: String,
+  error: String,
+  payload: Schema.Types.Mixed,
+});
+leadCaptureLogSchema.index({ organizationId: 1, sourceId: 1, createdAt: -1 });
+leadCaptureLogSchema.index({ sourceId: 1, key: 1 }, { unique: true, partialFilterExpression: { key: { $type: 'string' } } });
+leadCaptureLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 86400 });
+export const LeadCaptureLog = model('LeadCaptureLog', leadCaptureLogSchema);

@@ -156,6 +156,11 @@ export async function receiveMessage(orgId, { channel, from, to, body, subject, 
   conv.unreadCount += 1;
   if (conv.status === 'closed') conv.status = 'open';
   await conv.save();
+  // A WhatsApp message from someone not yet in the CRM becomes a lead when WhatsApp lead capture is on
+  if (channel === 'whatsapp' && phone && !conv.related?.leadId && !conv.related?.contactId) {
+    const { captureFromWhatsApp } = await import('../leadCapture/service.js');
+    await captureFromWhatsApp(orgId, conv, { name, phone, body });
+  }
 
   // Opt-out keywords ("STOP") → record consent withdrawal for that channel
   if (phone && OPT_OUT_KEYWORDS.includes(String(body || '').trim().toLowerCase())) {
