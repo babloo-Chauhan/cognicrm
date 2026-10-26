@@ -15,6 +15,7 @@ const ALIASES = {
   phone: ['phone', 'mobile', 'phonenumber', 'mobilenumber', 'mobileno', 'phoneno', 'contactnumber', 'contactno', 'contact', 'tel', 'telephone', 'whatsapp', 'whatsappnumber', 'yourphone', 'yourmobile', 'cell', 'sendermobile'],
   email: ['email', 'emailaddress', 'youremail', 'mail', 'emailid', 'workemail', 'senderemail'],
   company: ['company', 'companyname', 'organization', 'organisation', 'business', 'businessname', 'firm', 'sendercompany'],
+  address: ['address', 'fulladdress', 'location', 'city', 'yourcity', 'sendercity', 'area'],
   requirement: ['message', 'requirement', 'requirements', 'enquiry', 'inquiry', 'query', 'comments', 'comment', 'yourmessage', 'description', 'details', 'need', 'subject', 'productinterest', 'product', 'service', 'interest'],
 };
 const LOOKUP = new Map(Object.entries(ALIASES).flatMap(([field, names]) => names.map((n) => [n, field])));
@@ -64,6 +65,7 @@ export function parseJustdial(p = {}) {
   }
   return {
     externalId: text(p.leadid) || undefined,
+    address: [text(p.area), text(p.city)].filter(Boolean).join(', '),
     name: [text(p.prefix), text(p.name)].filter(Boolean).join(' '),
     phone: text(p.mobile) || text(p.phone),
     email: text(p.email),
@@ -90,6 +92,7 @@ export function parseIndiamart(r = {}) {
   const message = text(r.QUERY_MESSAGE).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
   return {
     externalId: text(r.UNIQUE_QUERY_ID) || undefined,
+    address: [text(r.SENDER_CITY), text(r.SENDER_STATE)].filter(Boolean).join(', '),
     name: text(r.SENDER_NAME),
     phone: text(r.SENDER_MOBILE).replace(/^\+(\d+)-/, '+$1'),
     email: text(r.SENDER_EMAIL),
@@ -112,7 +115,7 @@ export function parseMetaLead(lead = {}, extra = {}) {
 
 // Google Ads lead form column ids → our fields
 const GOOGLE_COLUMNS = {
-  FULL_NAME: 'name', FIRST_NAME: 'firstName', LAST_NAME: 'lastName', PHONE_NUMBER: 'phone', EMAIL: 'email', WORK_EMAIL: 'email',
+  CITY: 'address', FULL_NAME: 'name', FIRST_NAME: 'firstName', LAST_NAME: 'lastName', PHONE_NUMBER: 'phone', EMAIL: 'email', WORK_EMAIL: 'email',
   WORK_PHONE: 'phone', COMPANY_NAME: 'company',
 };
 

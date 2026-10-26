@@ -89,6 +89,8 @@ export function crudRouter(Model, {
   rules, // form rules (fieldRules.js) checked on create and update
   sortable = ['createdAt', 'updatedAt'], // ?sort= fields clients may use (each needs an index in the model)
   scope, // (req) => extra filter limiting which records this user may see, or null for all (e.g. own leads only)
+  queryFilter, // async (req) => extra list filter from entity-specific ?params (e.g. leads ?reminder=missed)
+  decorate, // async (items, req) => list rows with extra read-only fields (e.g. a lead's last follow-up)
 } = {}) {
   const router = Router();
   const name = `${Model.collection.collectionName}`;
@@ -144,6 +146,7 @@ export function crudRouter(Model, {
 
   router.get('/', async (req, res) => {
     const filter = listFilter(req, searchFields, filterFields, Model, scope);
+    if (queryFilter) Object.assign(filter, await queryFilter(req));
     const { page, limit } = pageParams(req.query);
     const sort = sortParam(req.query.sort, defaultSort, [...new Set([...sortable, ...Object.keys(defaultSort)])]);
     // _id as a tie-breaker (same direction as the sort, so the indexes in the models serve it) keeps pages
@@ -176,6 +179,7 @@ export function crudRouter(Model, {
     }
     const sortField = Object.keys(sort)[0];
     const next = items.length === limit ? encodeCursor(items[items.length - 1], sortField) : null;
+    if (decorate && items.length) items = await decorate(items, req);
     res.json({ items, total, page, limit, pages: Math.ceil(total / limit), next });
   });
 

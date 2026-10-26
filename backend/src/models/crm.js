@@ -69,6 +69,7 @@ const leadSchema = new Schema({
   lastContactedAt: Date,
   convertedContactId: { type: ObjectId, ref: 'Contact' },
   requirement: String, // what the customer needs
+  address: String, // city / area / full address, as the customer gave it
   nextFollowUpAt: { type: Date, default: null }, // when to follow up next (app's Follow-up tab + reminder)
   followUpReminderSentAt: { type: Date, default: null }, // reminder sent for the current nextFollowUpAt
   notes: String, // remarks typed on the lead form; later remarks are Notes linked to the lead

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import {
   Account, Activity, Appointment, Contact, Deal, Lead, Note, Order, Organization, Task, Ticket, User,
 } from '../../models/index.js';
@@ -270,6 +271,32 @@ router.delete('/leads/:id/team/:userId', requirePermission('leads:update'), asyn
 });
 
 const LEAD_SEARCH = ['name', 'email', 'phone', 'company'];
+// Activity that counts as following up a lead (the list's "Last follow-up" column)
+const FOLLOW_UP_TYPES = ['call', 'appointment', 'whatsapp', 'sms', 'email', 'note'];
+
+/** ?reminder=missed | today | upcoming | none: the lead's next follow-up against today in the company's time zone. */
+async function reminderFilter(req) {
+  const r = req.query.reminder;
+  if (!['missed', 'today', 'upcoming', 'none'].includes(r)) return {};
+  if (r === 'none') return { nextFollowUpAt: null };
+  const today = await reportPeriod(req.orgId, {}).then((p) => p.to);
+  const { start, end } = await reportPeriod(req.orgId, { from: today, to: today });
+  if (r === 'missed') return { nextFollowUpAt: { $lt: new Date(Math.min(Date.now(), end.getTime())) } };
+  if (r === 'today') return { nextFollowUpAt: { $gte: start, $lt: end } };
+  return { nextFollowUpAt: { $gte: end } };
+}
+
+/** Adds each lead's latest follow-up ({ type, at, title }) to a page of list rows. */
+async function withLastFollowUp(items, req) {
+  const ids = items.map((l) => new mongoose.Types.ObjectId(l.id));
+  const last = await Activity.aggregate([
+    { $match: { organizationId: req.orgId, 'links.leadId': { $in: ids }, type: { $in: FOLLOW_UP_TYPES } } },
+    { $sort: { occurredAt: -1 } },
+    { $group: { _id: '$links.leadId', type: { $first: '$type' }, at: { $first: '$occurredAt' }, title: { $first: '$title' } } },
+  ]);
+  const byLead = new Map(last.map((a) => [String(a._id), { type: a.type, at: a.at, title: a.title }]));
+  return items.map((l) => ({ ...l, lastFollowUp: byLead.get(l.id) || null }));
+}
 const LEAD_FILTERS = ['status', 'source', 'ownerId', 'assignees'];
 const BULK_ASSIGN_MAX = 10000;
 
@@ -357,6 +384,8 @@ router.use('/leads', crudRouter(Lead, {
   searchFields: LEAD_SEARCH,
   filterFields: LEAD_FILTERS,
   scope: leadScope,
+  queryFilter: reminderFilter,
+  decorate: withLastFollowUp,
   onCreate: async (doc, req) => {
     // A lead without an owner belongs to whoever created it; the creator can hand it straight to someone
     if (!doc.ownerId) doc.ownerId = req.user._id;

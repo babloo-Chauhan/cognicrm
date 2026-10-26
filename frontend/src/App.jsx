@@ -18,6 +18,7 @@ import { TeamPage } from './pages/Team.jsx';
 import { Pipelines } from './pages/Pipelines.jsx';
 import { Integrations } from './pages/Integrations.jsx';
 import { LeadCapture } from './pages/LeadCapture.jsx';
+import { LeadsList } from './pages/LeadsList.jsx';
 import { PublicForm } from './pages/PublicForm.jsx';
 import { Loading, ToastHost } from './components/ui.jsx';
 import { ModuleGate } from './components/ModuleGate.jsx';
@@ -76,7 +77,7 @@ function Shell() {
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Dashboard />} />
-            {ENTITIES.map((e) => <Route key={e} path={e} element={gate(MODULE_OF[e], <EntityList entity={e} />)} />)}
+            {ENTITIES.map((e) => <Route key={e} path={e} element={gate(MODULE_OF[e], e === 'leads' ? <LeadsList /> : <EntityList entity={e} />)} />)}
             {ENTITIES.filter((e) => !NO_DETAIL.includes(e)).map((e) => <Route key={`${e}-d`} path={`${e}/:id`} element={gate(MODULE_OF[e], <EntityDetail entity={e} />)} />)}
             <Route path="pipelines" element={gate('deals', <Pipelines />)} />
             <Route path="reports" element={<AdminOnly permission="reports:team"><Reports /></AdminOnly>} />

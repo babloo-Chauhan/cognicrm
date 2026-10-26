@@ -116,7 +116,7 @@ export async function captureLead(source, input, { payload } = {}) {
 
   const owner = await nextOwner(source);
   const lead = new Lead({
-    organizationId: orgId, name, phone, email, company: clip(input.company, 200), requirement: clip(input.requirement, 2000),
+    organizationId: orgId, name, phone, email, company: clip(input.company, 200), address: clip(input.address, 300) || undefined, requirement: clip(input.requirement, 2000),
     notes: clip(remarksOf(input.details), 4000) || undefined, source: source.leadSource || SOURCE_DEFAULTS[source.type]?.leadSource || 'other',
     ownerId: owner?._id || null, assignees: owner ? [owner._id] : [],
     assignments: owner ? [{ from: null, to: owner._id, by: null, at: new Date() }] : [],

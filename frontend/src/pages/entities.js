@@ -13,6 +13,7 @@ export const ENTITY_CONFIG = {
       { key: 'phone', label: 'Phone', type: 'phone' },
       { key: 'email', label: 'Email', type: 'email' },
       { key: 'company', label: 'Company' },
+      { key: 'address', label: 'Address', placeholder: 'City, area or full address' },
       { key: 'ownerId', label: 'Assigned to', type: 'user' },
       { key: 'source', label: 'Source', type: 'select', options: ['website', 'referral', 'inbound_call', 'campaign', 'social', 'event', 'cold', 'other'] },
       { key: 'status', label: 'Status', type: 'select', options: ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'unqualified'] },

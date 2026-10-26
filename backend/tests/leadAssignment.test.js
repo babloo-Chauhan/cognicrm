@@ -253,3 +253,25 @@ describe('bulk assign', () => {
     expect((await http().get(`/api/v1/leads/${id}`).set(admin.auth)).body.ownerId).toBeFalsy();
   });
 });
+
+describe('leads list extras', () => {
+  it('filters by reminder and shows each lead\'s last follow-up', async () => {
+    const admin = await registerOrg();
+    const day = 86400000;
+    const mk = async (name, nextFollowUpAt) => (await http().post('/api/v1/leads').set(admin.auth).send({ name, nextFollowUpAt, address: 'Pune, Maharashtra' })).body;
+    const missed = await mk('Missed one', new Date(Date.now() - 2 * day).toISOString());
+    await mk('Upcoming one', new Date(Date.now() + 3 * day).toISOString());
+    await mk('No reminder', null);
+    const names = async (reminder) => (await http().get('/api/v1/leads').query({ reminder }).set(admin.auth)).body.items.map((l) => l.name);
+    expect(await names('missed')).toEqual(['Missed one']);
+    expect(await names('upcoming')).toEqual(['Upcoming one']);
+    expect(await names('none')).toEqual(['No reminder']);
+
+    await http().post('/api/v1/notes').set(admin.auth).send({ body: 'Spoke about pricing', related: { leadId: missed.id } });
+    const rows = (await http().get('/api/v1/leads').set(admin.auth)).body.items;
+    const row = rows.find((l) => l.id === missed.id);
+    expect(row.lastFollowUp).toMatchObject({ type: 'note', title: 'Spoke about pricing' });
+    expect(row.address).toBe('Pune, Maharashtra');
+    expect(rows.find((l) => l.name === 'No reminder').lastFollowUp).toBeNull();
+  });
+});

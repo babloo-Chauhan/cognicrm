@@ -32,7 +32,7 @@ describe('lead capture: website / API webhook', () => {
 
     const lead = (await http().get(`/api/v1/leads/${a.body.leadId}`).set(admin.auth)).body;
     expect(lead).toMatchObject({ name: 'Rahul Sharma', phone: '+919876543210', email: 'rahul@example.com', requirement: '50 office chairs', source: 'website', ownerId: ravi.user.id });
-    expect(lead.notes).toContain('City: Pune');
+    expect(lead.address).toBe('Pune');
     expect(lead.notes).toContain('Utm campaign: diwali');
     expect(lead.nextFollowUpAt).toBeTruthy();
     expect((await http().get(`/api/v1/leads/${b.body.leadId}`).set(admin.auth)).body).toMatchObject({ name: 'Neha Gupta', ownerId: sita.user.id });
@@ -109,7 +109,7 @@ describe('lead capture: Justdial, IndiaMART, Google Ads', () => {
     expect(res.text).toBe('RECEIVED');
     await http().get(capture(src.token)).query(q);
     const [lead] = await leads(admin);
-    expect(lead).toMatchObject({ name: 'Mr Sunil', phone: '+919876500041', requirement: 'Packers and movers', source: 'justdial' });
+    expect(lead).toMatchObject({ name: 'Mr Sunil', phone: '+919876500041', requirement: 'Packers and movers', source: 'justdial', address: 'Rohini, Delhi' });
     expect(await Lead.countDocuments({ organizationId: admin.org.id })).toBe(1);
   });
 
@@ -162,7 +162,7 @@ describe('lead capture: Justdial, IndiaMART, Google Ads', () => {
     expect(res.status).toBe(201);
     const lead = (await http().get(`/api/v1/leads/${res.body.leadId}`).set(admin.auth)).body;
     expect(lead).toMatchObject({ name: 'Kiran Rao', phone: '+919876500071', source: 'google_ads' });
-    expect(lead.notes).toContain('City: Mysuru');
+    expect(lead.address).toBe('Mysuru');
   });
 });
 
